@@ -38,12 +38,6 @@ func TestDeleteByIndex(t *testing.T) {
 		t.Error("slice size did not decrease by 1")
 	}
 
-	err, _ = del(stringSlice, -1)
-
-	if err == nil {
-		t.Error("failed to detect negative index")
-	}
-
 	err, _ = del(stringSlice, 10)
 
 	if err == nil {

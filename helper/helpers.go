@@ -14,26 +14,28 @@ func Contains[T comparable](slice []T, item T) bool {
 	return false
 }
 
-func DeleteByIndex[T any](s []T, index int) (error, []T) {
+func DeleteByIndex[T any](s []T, index uint) (error, []T) {
 
-	if index >= len(s) {
+	if index >= uint(len(s)) {
 		return errors.New("index out of bounds"), nil
-	}
-
-	if index < 0 {
-		return errors.New("index must be >= 0"), nil
 	}
 
 	if index == 0 {
 		return nil, s[1:]
 	}
 
-	if index == len(s)-1 {
+	if index == uint(len(s)-1) {
 		return nil, s[:len(s)-1]
 	}
 
-	slice1 := s[:index]
-	slice2 := s[index+1:]
+	/*
+		ensures a memory leak where the backing array of original size is still referenced
+		does not occur
+	*/
+	slice1 := make([]T, index)
+	copy(slice1, s)
+
+	slice2 := s[index+1:] // memory leak cannot occur in this scenario
 
 	return nil, append(slice1, slice2...)
 }

@@ -1,6 +1,8 @@
-package llm
+package scraper
 
 import (
+	"agent/llm/messages"
+	model2 "agent/llm/model"
 	"context"
 	"errors"
 	"testing"
@@ -11,12 +13,12 @@ type testRequest struct {
 	Mode string
 }
 
-func (t *testRequest) Validate(messageSlice []messageInterface) error {
+func (t *testRequest) Validate(messageSlice []model2.messageInterface) error {
 	_ = messageSlice
 	return nil
 }
 
-func (t *testRequest) Request(messages []messageInterface, ctx context.Context) (error, *ChatCompletion) {
+func (t *testRequest) Request(messages []model2.messageInterface, ctx context.Context) (error, *messages.ChatCompletion) {
 
 	_ = messages
 	_ = ctx
@@ -31,13 +33,13 @@ func (t *testRequest) Request(messages []messageInterface, ctx context.Context) 
 		return &stanErr, nil
 	case "wait":
 		time.Sleep(4 * time.Second)
-		return nil, &ChatCompletion{}
+		return nil, &messages.ChatCompletion{}
 	default:
-		return nil, &ChatCompletion{}
+		return nil, &messages.ChatCompletion{}
 	}
 }
 
-func timestamp(m []messageInterface, llms []model) (error, int64) {
+func timestamp(m []model2.messageInterface, llms []model) (error, int64) {
 
 	wt := int32(1)
 	start := time.Now()
@@ -51,12 +53,12 @@ func TestExponentialBackoff(t *testing.T) {
 
 	tr := testRequest{"rate-limit"}
 
-	message := gptStandardMessage{
+	message := model2.gptStandardMessage{
 		Role:    "user",
 		Content: "test",
 	}
 
-	messageSlice := []messageInterface{
+	messageSlice := []model2.messageInterface{
 		&message,
 	}
 

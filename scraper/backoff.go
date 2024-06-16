@@ -1,6 +1,8 @@
-package llm
+package scraper
 
 import (
+	"agent/llm/messages"
+	model2 "agent/llm/model"
 	"context"
 	"errors"
 	"fmt"
@@ -13,8 +15,8 @@ import (
 interface that implements request function
 */
 type model interface {
-	Validate(messageSlice []messageInterface) error
-	Request(messages []messageInterface, ctx context.Context) (error, *ChatCompletion)
+	Validate(messageSlice []model2.messageInterface) error
+	Request(messages []model2.messageInterface, ctx context.Context) (error, *messages.ChatCompletion)
 }
 
 // modelError
@@ -86,13 +88,13 @@ func (b *backoffError) Error() string {
 
 // exponentialBackoff
 /*
-Executes an Api Request to the model, switches the model based on execution time and availability
+Executes an Api Chat to the model, switches the model based on execution time and availability
 */
 func exponentialBackoff(
 	llmSlice []model,
-	chatRequest *[]messageInterface,
+	chatRequest *[]model2.messageInterface,
 	tryLimit int16,
-	requestWaitTime *int32) (*ChatCompletion, error) {
+	requestWaitTime *int32) (*messages.ChatCompletion, error) {
 
 	/*
 		how to calculate the max time the exponential backoff function will run for:
@@ -100,7 +102,7 @@ func exponentialBackoff(
 	*/
 
 	type request struct {
-		comp *ChatCompletion
+		comp *messages.ChatCompletion
 		err  error
 	}
 
