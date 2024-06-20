@@ -1,6 +1,4 @@
-![alt text](https://assets-global.website-files.com/65f326ba9a31d0bec3e77363/65f40a01bd69274c25bc035d_Group%2043.png)
-
-# Bench AI Agent Workbench
+# Huan
 
 ## About
 
@@ -441,7 +439,7 @@ These are the type of messages you can send to the llm
 ## CLI
 To run the agent simply use the run command and point it to your json file
 ```shell
-agent run ./path/to/my/config.json
+agent run ./path/to/my/config.yaml
 ```
 
 ### List Sessions

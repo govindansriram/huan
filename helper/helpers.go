@@ -14,19 +14,25 @@ func Contains[T comparable](slice []T, item T) bool {
 	return false
 }
 
-func DeleteByIndex[T any](s []T, index uint) (error, []T) {
+func DeleteByIndex[T any](s []T, index uint) []T {
 
 	if index >= uint(len(s)) {
-		return errors.New("index out of bounds"), nil
+		panic(errors.New("index out of bounds"))
 	}
 
 	if index == 0 {
-		return nil, s[1:]
+		ret := make([]T, len(s)-1)
+		copy(ret, s[1:])
+		return ret
 	}
 
 	if index == uint(len(s)-1) {
-		return nil, s[:len(s)-1]
+		ret := make([]T, len(s)-1)
+		copy(ret, s[:len(s)-1])
+		return ret
 	}
+
+	slice3 := make([]T, 0, len(s)-1)
 
 	/*
 		ensures a memory leak where the backing array of original size is still referenced
@@ -35,9 +41,13 @@ func DeleteByIndex[T any](s []T, index uint) (error, []T) {
 	slice1 := make([]T, index)
 	copy(slice1, s)
 
-	slice2 := s[index+1:] // memory leak cannot occur in this scenario
+	slice2 := make([]T, len(s)-int(index+1))
+	copy(slice2, s[int(index+1):])
 
-	return nil, append(slice1, slice2...)
+	slice3 = append(slice3, slice1...)
+	slice3 = append(slice3, slice2...)
+
+	return slice3
 }
 
 func IsLte[T cmp.Ordered](lowVal, highVal T, checkEqual bool) bool {

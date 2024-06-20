@@ -10,7 +10,7 @@ import (
 
 func getNavigateCommand() chromedp.ActionFunc {
 	url := "https://bench-ai.com"
-	return navigateToUrl(url)
+	return NavigateToUrl(url)
 }
 
 func actionRunner(timeoutSeconds int64, actionFunc ...chromedp.ActionFunc) error {
@@ -61,7 +61,7 @@ func TestNavigate(t *testing.T) {
 
 func TestTakeFullPageScreenshot(t *testing.T) {
 	var dataBuffer []byte
-	action := takeFullPageScreenshot(2, &dataBuffer)
+	action := TakeFullPageScreenshot(2, &dataBuffer)
 	err := actionRunner(3, getNavigateCommand(), action)
 
 	if err != nil {
@@ -75,7 +75,7 @@ func TestTakeFullPageScreenshot(t *testing.T) {
 
 func TestTakeElementScreenshot(t *testing.T) {
 	var dataBuffer []byte
-	screenshot := takeElementScreenshot(1, "body", &dataBuffer)
+	screenshot := TakeElementScreenshot(1, "body", &dataBuffer)
 	err := actionRunner(3, getNavigateCommand(), screenshot)
 
 	if err != nil {
@@ -89,7 +89,7 @@ func TestTakeElementScreenshot(t *testing.T) {
 
 func TestSleep(t *testing.T) {
 	start := time.Now()
-	err := actionRunner(6, getNavigateCommand(), sleepForMs(1500))
+	err := actionRunner(6, getNavigateCommand(), SleepForMs(1500))
 
 	end := time.Now()
 
@@ -104,7 +104,7 @@ func TestSleep(t *testing.T) {
 
 func TestNodeCollect(t *testing.T) {
 	nav := getNavigateCommand()
-	sle := sleepForMs(2000)
+	sle := SleepForMs(2000)
 
 	var styledNodeList []*nodeWithStyles
 	col := populatedNode("body", true, true, true, &styledNodeList)
@@ -137,7 +137,7 @@ func TestClick(t *testing.T) {
 
 	taskSlice := make([]chromedp.ActionFunc, 3)
 	taskSlice[0] = getNavigateCommand()
-	taskSlice[1] = sleepForMs(2000)
+	taskSlice[1] = SleepForMs(2000)
 
 	var styledNodeList []*nodeWithStyles
 	taskSlice[2] = populatedNode("body", true, true, true, &styledNodeList)
@@ -148,7 +148,7 @@ func TestClick(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	clk := clickOnElement(styledNodeList[0].node.FullXPath(), chromedp.BySearch)
+	clk := ClickOnElement(styledNodeList[0].node.FullXPath(), chromedp.BySearch)
 	taskSlice[2] = clk
 
 	err = actionRunner(10, taskSlice...)
@@ -160,7 +160,7 @@ func TestClick(t *testing.T) {
 
 func TestHtml(t *testing.T) {
 	nav := getNavigateCommand()
-	sle := sleepForMs(2000)
+	sle := SleepForMs(2000)
 	var htmlString string
 
 	colHtml := collectHtml("body", &htmlString)
@@ -181,7 +181,7 @@ func TestHtml(t *testing.T) {
 
 func TestScrollToPixel(t *testing.T) {
 	nav := getNavigateCommand()
-	sle := sleepForMs(2000)
+	sle := SleepForMs(2000)
 	scroll := scrollToPixel(0, 500)
 	err := actionRunner(7, nav, sle, scroll)
 
@@ -192,9 +192,9 @@ func TestScrollToPixel(t *testing.T) {
 
 func TestScrollByPercentage(t *testing.T) {
 	nav := getNavigateCommand()
-	sle := sleepForMs(2000)
+	sle := SleepForMs(2000)
 	err, scroll := scrollByPercentage(1)
-	sle2 := sleepForMs(2000)
+	sle2 := SleepForMs(2000)
 
 	if err != nil {
 		t.Fatal(err)

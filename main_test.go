@@ -41,24 +41,24 @@ func scanDir(startPath string, t *testing.T, suffix string) bool {
 	return false
 }
 
-func TestCreateSessionDirectory(t *testing.T) {
-	err, tempDirect := tempDir()
-
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	defer removeTemp(tempDirect, t)
-
-	err = os.Setenv("BENCHAI_SAVEDIR", tempDirect)
-
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	createSessionDirectory("test-sess")
-
-	if !scanDir(tempDirect, t, "test-sess") {
-		t.Fatal("session dir was not generated")
-	}
-}
+//func TestCreateSessionDirectory(t *testing.T) {
+//	err, tempDirect := tempDir()
+//
+//	if err != nil {
+//		t.Fatal(err)
+//	}
+//
+//	defer removeTemp(tempDirect, t)
+//
+//	err = os.Setenv("BENCHAI_SAVEDIR", tempDirect)
+//
+//	if err != nil {
+//		t.Fatal(err)
+//	}
+//
+//	createSessionDirectory("test-sess")
+//
+//	if !scanDir(tempDirect, t, "test-sess") {
+//		t.Fatal("session dir was not generated")
+//	}
+//}

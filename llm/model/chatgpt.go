@@ -238,35 +238,17 @@ func (c *ChatGpt) AppendAssistantMessage(message *messages.AssistantMessage) err
 	return nil
 }
 
-func (c *ChatGpt) PopMessage(index uint) error {
-	if len(c.Messages) == 0 {
-		return nil
-	}
-
+func (c *ChatGpt) PopMessage(index uint) {
 	delMes := helper.DeleteByIndex[llmMessages]
 	delStr := helper.DeleteByIndex[string]
 
-	err, llmMess := delMes(c.Messages, index)
-	err1, mType := delStr(c.messageType, index)
-	err2, roleSlice := delStr(c.roleType, index)
-
-	if err != nil {
-		return err
-	}
-
-	if err1 != nil {
-		return err1
-	}
-
-	if err2 != nil {
-		return err1
-	}
+	llmMess := delMes(c.Messages, index)
+	mType := delStr(c.messageType, index)
+	roleSlice := delStr(c.roleType, index)
 
 	c.Messages = llmMess
 	c.messageType = mType
 	c.roleType = roleSlice
-
-	return nil
 }
 
 /*
@@ -285,14 +267,18 @@ func InitChatGpt(
 		return errors.New("openai settings received empty model name"), nil
 	}
 
+	if val, ok := getEngineMap()[model]; !ok {
+		return fmt.Errorf("gpt model %s is not permitted", val.Name), nil
+	}
+
 	c := ChatGpt{
 		Model: model,
 		key:   apiKey,
 	}
 
-	c.Messages = make([]llmMessages, 10)
-	c.messageType = make([]string, len(c.Messages))
-	c.roleType = make([]string, len(c.Messages))
+	c.Messages = make([]llmMessages, 0, 10)
+	c.messageType = make([]string, 0, len(c.Messages))
+	c.roleType = make([]string, 0, len(c.Messages))
 
 	return nil, &c
 }
@@ -558,7 +544,7 @@ returns:
 func (c *ChatGpt) Chat(ctx context.Context) (error, *bool, *messages.ChatCompletion) {
 	var isRateLimit bool
 
-	if c.roleType[len(c.roleType)] != "user" {
+	if c.roleType[len(c.roleType)-1] != "user" {
 		return fmt.Errorf("the role for the last message must be user, got %s", c.roleType), &isRateLimit, nil
 	}
 
