@@ -544,6 +544,9 @@ returns:
 func (c *ChatGpt) Chat(ctx context.Context) (error, *bool, *messages.ChatCompletion) {
 	var isRateLimit bool
 
+	fmt.Printf("%p, %p \n", &c.Messages, c)
+	fmt.Println(len(c.Messages))
+
 	if c.roleType[len(c.roleType)-1] != "user" {
 		return fmt.Errorf("the role for the last message must be user, got %s", c.roleType), &isRateLimit, nil
 	}
@@ -610,5 +613,44 @@ func (c *ChatGpt) Chat(ctx context.Context) (error, *bool, *messages.ChatComplet
 		}
 
 		return err, &isRateLimit, nil
+	}
+}
+
+func (c *ChatGpt) DeepCopy() *ChatGpt {
+
+	//frq := *c.FrequencyPenalty
+	//lb := *c.LogitBias
+	//lp := *c.LogProbs
+	//maxTok := *c.MaxTokens
+	//n := *c.N
+	//pr := *c.PresencePenalty
+	//rp := *c.ResponseFormat
+	//seed := *c.Seed
+	//stop := *c.Stop
+	//stream := *c.Stream
+	//temp := *c.Temperature
+	//topP := *c.TopP
+	//tools := *c.Tools
+
+	return &ChatGpt{
+		Model:            c.Model,
+		FrequencyPenalty: c.FrequencyPenalty,
+		Messages:         c.Messages,
+		LogitBias:        c.LogitBias,
+		LogProbs:         c.LogProbs,
+		MaxTokens:        c.MaxTokens,
+		N:                c.N,
+		PresencePenalty:  c.PresencePenalty,
+		ResponseFormat:   c.ResponseFormat,
+		Seed:             c.Seed,
+		Stop:             c.Stop,
+		Stream:           c.Stream,
+		Temperature:      c.Temperature,
+		TopP:             c.TopP,
+		Tools:            c.Tools,
+		ToolChoice:       c.ToolChoice,
+		key:              c.key,
+		messageType:      c.messageType,
+		roleType:         c.roleType,
 	}
 }

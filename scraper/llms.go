@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"gopkg.in/yaml.v3"
+	"log"
 	"math"
 	"time"
 )
@@ -34,6 +35,13 @@ func (c *Chatgpt) Pop(index uint) {
 
 func (c *Chatgpt) Chat(ctx context.Context) (error, *bool, *messages.ChatCompletion) {
 	return c.chat.Chat(ctx)
+}
+
+func (c *Chatgpt) deepCopy() llm {
+	//c.chat = c.chat.DeepCopy()
+	return &Chatgpt{
+		chat: c.chat.DeepCopy(),
+	}
 }
 
 func loadCGptFromYaml(data []byte, maxTokens uint16) (error, *Chatgpt) {
@@ -71,6 +79,7 @@ type llm interface {
 	AppendMultiModal(imageBytes []byte, role string, detail *string, imageType string) error
 	Pop(index uint)
 	Chat(ctx context.Context) (error, *bool, *messages.ChatCompletion)
+	deepCopy() llm
 }
 
 func exponentialBackoff(
@@ -115,6 +124,7 @@ func exponentialBackoff(
 	}
 
 	for i := range tryLimit {
+		log.Printf("executing chat request, on attempt %d", i)
 		ctx, cancelFunc := context.WithTimeout(context.Background(), time.Second*time.Duration(maxWaitTime))
 		channel := make(chan *retStruct)
 		go req(model, ctx, channel)
@@ -123,22 +133,28 @@ func exponentialBackoff(
 		case val := <-channel:
 			cancelFunc()
 			if val.error != nil && !val.isWaitTime {
+				log.Printf("request has errored, cancelling request: %v \n", val.error)
 				return val.error, nil
 			} else if val.error != nil && val.isWaitTime {
+				log.Println("rate limit hit, sleeping...")
 				snooze(int(i), int(tryLimit))
 			} else if val.error == nil {
+				log.Println("response received")
 				return nil, val.message
 			}
 		case <-ctx.Done():
 			cancelFunc()
+			log.Println("max request duration hit, sleeping...")
 			snooze(int(i), int(tryLimit))
 		case <-parentCtx.Done():
 			cancelFunc()
+			log.Println("global timeout hit cancelling")
 			return parentCtx.Err(), nil
 		}
 
 		cancelFunc()
 	}
 
+	log.Println("try limit reached request has failed")
 	return errors.New("reached try limit for chat request"), nil
 }

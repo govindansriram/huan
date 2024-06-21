@@ -156,6 +156,7 @@ func (f Fetch) build() (error, *fetch) {
 }
 
 func (l languageModel) chat(ctx context.Context) (error, *messages.AssistantMessage) {
+
 	return exponentialBackoff(ctx, l.engine, l.duration, l.tryLimit)
 }
 
@@ -198,6 +199,14 @@ func (l LLM) build() (error, *languageModel) {
 		engine:   model,
 		duration: *l.Duration,
 		tryLimit: *l.TryLimit,
+	}
+}
+
+func (l languageModel) DeepCopy() *languageModel {
+	return &languageModel{
+		tryLimit: l.tryLimit,
+		duration: l.duration,
+		engine:   l.engine.deepCopy(),
 	}
 }
 

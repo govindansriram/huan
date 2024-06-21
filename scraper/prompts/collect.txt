@@ -2,10 +2,9 @@
 %s
 #################
 
-
 ### QUESTION ###
 
-Here is your task, based on what the page looks like and the html provided can do this: %s
+Here is your task, based on what the page looks like and the html provided can you do this: %s
 
 Please return the data you collect in an array of dictionaries, the dictionaries should be structured with the
 following template:

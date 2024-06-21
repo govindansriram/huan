@@ -3,7 +3,9 @@ package scraper
 import (
 	"agent/llm/messages"
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/chromedp/chromedp"
 	"log"
 	"time"
@@ -110,11 +112,12 @@ func scraper(
 	samples *[]map[string]interface{},
 	capacity uint16,
 	model *languageModel,
+	task string,
+	template map[string]interface{},
 	logger func(message string)) chromedp.ActionFunc {
 
 	return func(c context.Context) error {
 		err := chromedp.Navigate(url).Do(c)
-		alive := true
 		err = chromedp.Sleep(time.Second * 5).Do(c)
 
 		if err != nil {
@@ -132,16 +135,36 @@ func scraper(
 			panic(err)
 		}
 
-		for alive && (capacity > uint16(len(*samples))) {
+		for capacity > uint16(len(*samples)) {
 			var htmlData string
 			var imageBuffer []byte
 
-			err, ext := collectContext(&htmlData, &imageBuffer, c)
+			err, _ := collectContext(&htmlData, &imageBuffer, c)
 			if err != nil {
 				return errors.New("failed to collect website data such as background or html")
 			}
 
-			addVisualContext(model, &imageBuffer, ext)
+			//addVisualContext(model, &imageBuffer, ext)
+
+			var limit uint
+
+			// TODO: Request in the yaml splittable limits
+
+			limit += 40_000 * 4
+			strArr := splitStringByLen(&htmlData, limit)
+
+			fmt.Println(strArr)
+
+			bytes, err := json.MarshalIndent(template, "", " ")
+
+			if err != nil {
+				return err
+			}
+
+			runCollectionPool(task, string(bytes), model, c, 2, strArr)
+
+			//fmt.Println(processLoadCollectionPrompt(*strArr[0], task, string(bytes), model, c))
+			break
 
 		}
 
@@ -204,7 +227,7 @@ func splitStringIntoBuckets(pStr *string, bucketCount uint) []*string {
 	runes := []rune(*pStr)
 
 	if uint(len(runes)) < bucketCount {
-		panic("the length of the str is less then teh amount of requested buckets")
+		panic("the length of the str is less then the amount of requested buckets")
 	}
 
 	bucketLength := uint(len(runes)) / bucketCount
@@ -247,7 +270,14 @@ func collect(llm *languageModel, fetchSettings *fetch, set *setting) error {
 		}
 	}
 
-	scraperAction := scraper(fetchSettings.url, &sampleSlice, fetchSettings.maxSamples, llm, lg)
+	scraperAction := scraper(
+		fetchSettings.url,
+		&sampleSlice,
+		fetchSettings.maxSamples,
+		llm,
+		fetchSettings.task,
+		fetchSettings.exampleTemplate,
+		lg)
 
 	lg("fetching data ...")
 	err := chromedp.Run(parentContext, scraperAction)
