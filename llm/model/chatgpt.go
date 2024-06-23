@@ -358,6 +358,10 @@ func (c *ChatGpt) Validate(convo *messages.ConversationBuilder) error {
 		return errors.New("openai settings received empty model name")
 	}
 
+	if c.MaxTokens != nil && *c.MaxTokens < 1 {
+		return errors.New("max tokens must be greater than 1")
+	}
+
 	if err := adjustConversation(convo); err != nil {
 		return err
 	}

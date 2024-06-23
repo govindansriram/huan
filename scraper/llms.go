@@ -149,7 +149,7 @@ func (l *LanguageModel) Validate(convo *messages.ConversationBuilder) error {
 	return err
 }
 
-func initLanguageModel(
+func InitLanguageModel(
 	modelType string,
 	settings map[string]interface{},
 	tryLimit *uint8,
@@ -174,6 +174,8 @@ func initLanguageModel(
 
 	if maxTokens == nil {
 		tokenLimit = 500
+	} else {
+		tokenLimit = *maxTokens
 	}
 
 	var b bot

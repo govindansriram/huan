@@ -90,10 +90,16 @@ func promptPool(
 		go func() {
 			workerPool <- struct{}{}             // signal to the worker pool that, work is being done, blocking it once the buffer is full
 			err, result := llm.Chat(ctx, &convo) // start the request
-			assistantMessage := result.Content
+
+			var response string
+
+			if err == nil {
+				response = *result.Content
+			}
+
 			channel <- chatResult{
 				err:      err,
-				response: *assistantMessage,
+				response: response,
 			}
 			wg.Done()
 		}()

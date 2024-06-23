@@ -1,8 +1,6 @@
 package scraper
 
 import (
-	"agent/llm/messages"
-	fetch2 "agent/scraper/fetch"
 	"errors"
 	"fmt"
 	"os"
@@ -46,11 +44,11 @@ type Settings struct {
 }
 
 /*
-build
+BuildSettings
 
 creates a settings struct with predefined defaults
 */
-func (s *Session) buildSettings() (error, *Settings) {
+func (s *Session) BuildSettings() (error, *Settings) {
 	return nil, &Settings{
 		Verbose: s.Settings.Verbose,
 	}
@@ -67,7 +65,7 @@ type Fetch struct {
 	ExampleTemplate map[string]interface{}
 }
 
-func (s *Session) buildFetchSettings() (error, *Fetch) {
+func (s *Session) BuildFetchSettings() (error, *Fetch) {
 
 	if s.Fetch.MaxRuntime != nil && *s.Fetch.MaxRuntime == 0 {
 		return errors.New("the Fetch setting: maxRunTime cannot be 0"), nil
@@ -129,38 +127,4 @@ func (s *Session) buildFetchSettings() (error, *Fetch) {
 		saveRejected:    s.Fetch.SaveRejected,
 		ExampleTemplate: s.Fetch.ExampleTemplate,
 	}
-}
-
-func (s *Session) Start() error {
-
-	err, model := initLanguageModel(
-		s.LlmConfig.Type,
-		s.LlmConfig.Settings,
-		s.LlmConfig.TryLimit,
-		s.LlmConfig.MaxTokens,
-		s.LlmConfig.Duration)
-
-	if err != nil {
-		return err
-	}
-
-	err, sett := s.buildSettings()
-
-	if err != nil {
-		return err
-	}
-
-	if s.Fetch != nil {
-		err, fet := s.buildFetchSettings()
-
-		builder := &messages.ConversationBuilder{}
-
-		err = fetch2.Collect(model, fet, sett, builder)
-
-		if err != nil {
-			return err
-		}
-	}
-
-	return err
 }
