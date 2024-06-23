@@ -1,11 +1,11 @@
-package scraper
+package fetch
 
 import (
 	"agent/llm/messages"
+	scraper2 "agent/scraper"
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"github.com/chromedp/chromedp"
 	"log"
 	"time"
@@ -86,23 +86,21 @@ func collectContext(pString *string, pBuffer *[]byte, ctx context.Context) (erro
 	return err, ext
 }
 
-func addVisualContext(llm *languageModel, pImageBuffer *[]byte, ext string) {
+func addVisualContext(
+	builder *messages.ConversationBuilder,
+	pImageBuffer *[]byte,
+	ext string) {
 	mess := messages.StandardMessage{
 		Role:    "user",
 		Content: `the following image is the webpage that needs to be scraped`,
 	}
 
-	err := llm.engine.AppendStandard(&mess)
-
-	if err != nil {
-		panic(err)
+	mm := messages.MultiModalMessage{
+		Role: "user",
 	}
+	mm.AppendImageBytes(*pImageBuffer, nil, ext)
 
-	err = llm.engine.AppendMultiModal(*pImageBuffer, "user", nil, ext)
-
-	if err != nil {
-		panic(err)
-	}
+	builder.AddStandardMessage(&mess).AddMultimodalMessage(&mm)
 
 	return
 }
@@ -111,9 +109,10 @@ func scraper(
 	url string,
 	samples *[]map[string]interface{},
 	capacity uint16,
-	model *languageModel,
+	model *scraper2.LanguageModel,
 	task string,
 	template map[string]interface{},
+	builder *messages.ConversationBuilder,
 	logger func(message string)) chromedp.ActionFunc {
 
 	return func(c context.Context) error {
@@ -129,7 +128,7 @@ func scraper(
 			Content: "you are an expert webscraper specialized in collecting html data",
 		}
 
-		err = model.engine.AppendStandard(&system)
+		builder.AddStandardMessage(&system)
 
 		if err != nil {
 			panic(err)
@@ -153,15 +152,13 @@ func scraper(
 			limit += 40_000 * 4
 			strArr := splitStringByLen(&htmlData, limit)
 
-			fmt.Println(strArr)
-
 			bytes, err := json.MarshalIndent(template, "", " ")
 
 			if err != nil {
 				return err
 			}
 
-			runCollectionPool(task, string(bytes), model, c, 2, strArr)
+			promptPool(2, task, string(bytes), model, c, builder, strArr)
 
 			//fmt.Println(processLoadCollectionPrompt(*strArr[0], task, string(bytes), model, c))
 			break
@@ -258,25 +255,30 @@ func splitStringIntoBuckets(pStr *string, bucketCount uint) []*string {
 	return pStrSlice
 }
 
-func collect(llm *languageModel, fetchSettings *fetch, set *setting) error {
-	parentContext, cancel := initContext(fetchSettings.headless, fetchSettings.maxRuntime)
+func Collect(
+	llm *scraper2.LanguageModel,
+	fetchSettings *scraper2.Fetch,
+	set *scraper2.Settings,
+	conversationBuilder *messages.ConversationBuilder) error {
+	parentContext, cancel := initContext(fetchSettings.Headless, fetchSettings.MaxRuntime)
 	defer cancel()
 
-	sampleSlice := make([]map[string]interface{}, 0, fetchSettings.maxSamples)
+	sampleSlice := make([]map[string]interface{}, 0, fetchSettings.MaxSamples)
 
 	lg := func(message string) {
-		if set.verbose {
+		if set.Verbose {
 			log.Println(message)
 		}
 	}
 
 	scraperAction := scraper(
-		fetchSettings.url,
+		fetchSettings.Url,
 		&sampleSlice,
-		fetchSettings.maxSamples,
+		fetchSettings.MaxSamples,
 		llm,
-		fetchSettings.task,
-		fetchSettings.exampleTemplate,
+		fetchSettings.Task,
+		fetchSettings.ExampleTemplate,
+		conversationBuilder,
 		lg)
 
 	lg("fetching data ...")

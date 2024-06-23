@@ -5,10 +5,6 @@ import (
 	"testing"
 )
 
-// TestInvalidRoleError
-/*
-unit test
-*/
 func TestInvalidRoleError(t *testing.T) {
 	err := invalidRoleError([]string{"user", "assistant"}, "system")
 
@@ -22,11 +18,7 @@ func TestInvalidRoleError(t *testing.T) {
 	}
 }
 
-// TestStandardMessage_Validate
-/*
-unit test
-*/
-func TestStandardMessage_Validate(t *testing.T) {
+func TestStandardMessage_validate(t *testing.T) {
 	tests := []struct {
 		message StandardMessage
 		pass    bool
@@ -41,7 +33,7 @@ func TestStandardMessage_Validate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if (tt.message.Validate() != nil) == tt.pass {
+			if (tt.message.validate() != nil) == tt.pass {
 				expected := func(state bool) string {
 					if state {
 						return "nil"
@@ -57,48 +49,100 @@ func TestStandardMessage_Validate(t *testing.T) {
 	}
 }
 
-func TestImageContent_Validate(t *testing.T) {
-	tests := []struct {
-		content imageContent
-		pass    bool
-		name    string
-	}{
-		{content: imageContent{Url: ""}, pass: false, name: "empty url"},
-		{content: imageContent{Url: "invalid url"}, pass: false, name: "invalid url"},
-		{content: imageContent{Url: "https://somewebsite.net/test.jpg"}, pass: true, name: "valid url"},
-		{content: imageContent{Url: "data:image/"}, pass: true, name: "valid base64"},
+func TestConversationBuilder_AddStandardMessage(t *testing.T) {
+	mess := StandardMessage{
+		Role:    "user",
+		Content: "testing access",
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if (tt.content.validate() != nil) == tt.pass {
-				expected := func(state bool) string {
-					if state {
-						return "nil"
-					}
-					return "error"
-				}
-				t.Errorf(
-					"expected TestImageContent_Validate to return an %s but got %s",
-					expected(tt.pass),
-					expected(!tt.pass))
-			}
-		})
-	}
+	builder := (&ConversationBuilder{}).AddStandardMessage(&mess)
+
+	t.Run("standard message added", func(t *testing.T) {
+		if builder.conversation[0] != &mess {
+			t.Errorf("standard message was not added")
+		}
+	})
+
+	t.Run("standard message role added", func(t *testing.T) {
+		if builder.roles[0] != "user" {
+			t.Errorf("standard message role was not added")
+		}
+	})
+
+	t.Run("standard message type added", func(t *testing.T) {
+		if builder.messageTypes[0] != "standard" {
+			t.Errorf("standard message was not added")
+		}
+	})
 }
 
-func TestMultiModalContent_Validate(t *testing.T) {
+func TestMultiModalContent_validate(t *testing.T) {
 
 	testText := "hello"
+	var invalidText string
 	tests := []struct {
-		content multimodalContent
+		content MultimodalContent
 		pass    bool
 		name    string
 	}{
-		{content: multimodalContent{Type: "image_url", ImageUrl: &imageContent{Url: "https://bench-ai.com/test.png"}}, pass: true, name: "valid image message"},
-		{content: multimodalContent{Type: "text", Text: &testText}, pass: true, name: "valid text message"},
-		{content: multimodalContent{Type: "data"}, pass: false, name: "invalid type"},
-		{content: multimodalContent{Type: "image_url", ImageUrl: nil, Text: &testText}, pass: false, name: "nil message for image_url"},
+		{
+			content: MultimodalContent{
+				Type: "image_url",
+				ImageUrl: &imageContent{
+					Url: "https://bench-ai.com/test.png"},
+			},
+			pass: true,
+			name: "valid image message",
+		},
+		{
+			content: MultimodalContent{
+				Type: "text",
+				Text: &testText,
+			},
+			pass: true,
+			name: "valid text message",
+		},
+		{
+			content: MultimodalContent{
+				Type: "text",
+				Text: nil,
+			},
+			pass: false,
+			name: "nil text",
+		},
+		{
+			content: MultimodalContent{
+				Type: "text",
+				Text: &invalidText,
+			},
+			pass: false,
+			name: "empty text",
+		},
+		{
+			content: MultimodalContent{
+				Type: "data",
+			},
+			pass: false,
+			name: "invalid type",
+		},
+		{
+			content: MultimodalContent{
+				Type:     "image_url",
+				ImageUrl: nil,
+				Text:     &testText,
+			},
+			pass: false,
+			name: "nil message for image_url",
+		},
+		{
+			content: MultimodalContent{
+				Type:     "image_url",
+				ImageUrl: &imageContent{},
+				Text:     &testText,
+			},
+			pass: false,
+			name: "nil url in image url",
+		},
 	}
 
 	for _, tt := range tests {
@@ -128,8 +172,8 @@ func TestMultiModalMessage_AppendImageBytes(t *testing.T) {
 		intBytes[i] = 1
 	}
 
-	mm.AppendImageBytes(bytes, nil)
-	mm.AppendImageBytes(intBytes, nil)
+	mm.AppendImageBytes(bytes, nil, "png")
+	mm.AppendImageBytes(intBytes, nil, "png")
 
 	byteSlice := make([]*[]byte, 2)
 
@@ -195,7 +239,7 @@ func TestMultiModalMessage_Validate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if (tt.message.Validate() != nil) == tt.pass {
+			if (tt.message.validate() != nil) == tt.pass {
 				expected := func(state bool) string {
 					if state {
 						return "nil"
@@ -238,7 +282,7 @@ func TestAssistantMessage_Validate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if (tt.message.Validate() != nil) == tt.pass {
+			if (tt.message.validate() != nil) == tt.pass {
 				expected := func(state bool) string {
 					if state {
 						return "nil"
@@ -281,4 +325,262 @@ func TestChatCompletion_ToAssistant(t *testing.T) {
 	if len(assistantSlice) != len(messageSlice) {
 		t.Fatal("assistant messages were not all converted")
 	}
+}
+
+func TestConversationBuilder_AddMultimodalMessage(t *testing.T) {
+	mess := MultiModalMessage{
+		Role: "user",
+	}
+
+	detail := "low"
+	mess.AppendImageUrl("https://test.com/img.png", &detail)
+
+	bb := &ConversationBuilder{}
+	bb.AddMultimodalMessage(&mess)
+
+	t.Run("mm message added", func(t *testing.T) {
+		if bb.conversation[0] != &mess {
+			t.Errorf("standard message was not added")
+		}
+	})
+
+	t.Run("mm message role added", func(t *testing.T) {
+		if bb.roles[0] != "user" {
+			t.Errorf("mm message role was not added")
+		}
+	})
+
+	t.Run("mm message type added", func(t *testing.T) {
+		if bb.messageTypes[0] != "multimodal" {
+			t.Errorf("mm message was not added")
+		}
+	})
+}
+
+func TestConversationBuilder_AddAssistantMessage(t *testing.T) {
+	content := "test content"
+	mess := AssistantMessage{
+		Role:    "assistant",
+		Content: &content,
+	}
+
+	bb := &ConversationBuilder{}
+	bb.AddAssistantMessage(&mess)
+
+	t.Run("assistant message added", func(t *testing.T) {
+		if bb.conversation[0] != &mess {
+			t.Errorf("assistant message was not added")
+		}
+	})
+
+	t.Run("assistant role added", func(t *testing.T) {
+		if bb.roles[0] != "assistant" {
+			t.Errorf("assistant role was not added")
+		}
+	})
+
+	t.Run("assistant message type added", func(t *testing.T) {
+		if bb.messageTypes[0] != "assistant" {
+			t.Errorf("assistant message was not added")
+		}
+	})
+}
+
+func getBuilder() *ConversationBuilder {
+	builder := &ConversationBuilder{}
+
+	builder.AddStandardMessage(&StandardMessage{
+		Role:    "user",
+		Content: "testing content",
+	})
+
+	mm := &MultiModalMessage{
+		Role: "user",
+	}
+	mm.AppendText("testing content")
+	builder.AddMultimodalMessage(mm)
+
+	data := "testing content"
+	as := &AssistantMessage{}
+	as.Content = &data
+	as.Role = "assistant"
+	builder.AddAssistantMessage(as)
+
+	return builder
+}
+
+func TestConversationBuilder_ConvertToAssistant(t *testing.T) {
+	builder := getBuilder()
+	t.Run("got assistant message", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r != nil {
+				t.Errorf("recovery was unnessecary")
+			}
+		}()
+
+		as := builder.ConvertToAssistant(2)
+
+		if as != builder.conversation[2] {
+			t.Errorf("data is not equivalent")
+		}
+	})
+}
+
+func TestConversationBuilder_ConvertToStandard(t *testing.T) {
+	builder := getBuilder()
+	t.Run("got standard message", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r != nil {
+				t.Errorf("recovery was unnessecary")
+			}
+		}()
+
+		stan := builder.ConvertToStandard(0)
+
+		if stan != builder.conversation[0] {
+			t.Errorf("data is not equivalent")
+		}
+	})
+}
+
+func TestConversationBuilder_ConvertToMultiModal(t *testing.T) {
+	builder := getBuilder()
+	t.Run("got mm message", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r != nil {
+				t.Errorf("recovery was unnessecary")
+			}
+		}()
+
+		stan := builder.ConvertToMultiModal(1)
+
+		if stan != builder.conversation[1] {
+			t.Errorf("data is not equivalent")
+		}
+	})
+}
+
+func TestConversationBuilder_Pop(t *testing.T) {
+	bb := getBuilder()
+
+	for range 50 {
+		bb.AddStandardMessage(&StandardMessage{
+			Role:    "user",
+			Content: "test message",
+		})
+	}
+
+	t.Run("delete middle element", func(t *testing.T) {
+		start := bb.Size()
+		bb.Pop(25)
+
+		if bb.Size() != start-1 {
+			t.Errorf("improper deletion")
+		}
+
+		if bb.GetMessageType(bb.Size()-1) != "standard" {
+			t.Errorf("improper deletion")
+		}
+	})
+
+	t.Run("delete invalid index", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Errorf("recovery was nessecary")
+			}
+		}()
+
+		bb.Pop(1000)
+	})
+
+	t.Run("delete all indices", func(t *testing.T) {
+		sz := bb.Size()
+
+		defer func() {
+			if r := recover(); r != nil {
+				t.Errorf("recovery was unnessecary")
+			}
+		}()
+
+		for range sz {
+			bb.Pop(bb.Size() - 1)
+
+			if bb.Size() != 0 {
+				tp := bb.GetMessageType(bb.Size() - 1)
+
+				switch tp {
+				case "standard":
+					_ = bb.ConvertToStandard(bb.Size() - 1)
+				case "multimodal":
+					_ = bb.ConvertToMultiModal(bb.Size() - 1)
+				case "assistant":
+					_ = bb.ConvertToAssistant(bb.Size() - 1)
+				}
+			}
+		}
+	})
+}
+
+func TestConversationBuilder_Build(t *testing.T) {
+
+	t.Run("invalid last message role", func(t *testing.T) {
+		bb := getBuilder()
+		err, _ := bb.Build()
+
+		if err == nil {
+			t.Errorf("conversation should have failed to build")
+		}
+	})
+
+	t.Run("invalid messages", func(t *testing.T) {
+		bb := getBuilder()
+		bb.AddStandardMessage(&StandardMessage{
+			Role:    "user",
+			Content: "",
+		})
+
+		err, _ := bb.Build()
+
+		if err == nil {
+			t.Errorf("conversation should have failed to build")
+		}
+	})
+
+	t.Run("valid messages", func(t *testing.T) {
+		bb := getBuilder()
+		bb.AddStandardMessage(&StandardMessage{
+			Role:    "user",
+			Content: "test",
+		})
+
+		err, _ := bb.Build()
+
+		if err != nil {
+			t.Errorf("conversation should have built")
+		}
+	})
+
+	t.Run("conversations are copies", func(t *testing.T) {
+		bb := getBuilder()
+		bb.AddStandardMessage(&StandardMessage{
+			Role:    "user",
+			Content: "test",
+		})
+		err, convo1 := bb.Build()
+
+		bb.AddStandardMessage(&StandardMessage{
+			Role:    "user",
+			Content: "test",
+		})
+		err2, convo2 := bb.Build()
+
+		if err != nil || err2 != nil {
+			t.Errorf("conversation should have built")
+		}
+
+		if len(convo1) == len(convo2) {
+			t.Errorf("conversation should be copies but share same address")
+		}
+
+	})
 }

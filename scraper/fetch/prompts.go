@@ -1,12 +1,21 @@
-package scraper
+package fetch
 
 import (
 	"agent/llm/messages"
+	scraper2 "agent/scraper"
 	"context"
 	_ "embed"
 	"fmt"
 	"sync"
 )
+
+/*
+TODO:
+Rename stuff, ensure that if a request is too big it shrinks it recursively process json outputs
+a map shoudl be appended too
+
+add threads too yaml config
+*/
 
 //go:embed prompts/collect.txt
 var collectPrompt string
@@ -20,8 +29,7 @@ func processLoadCollectionPrompt(
 	html,
 	task,
 	template string,
-	llm *languageModel,
-	ctx context.Context) (error, string) {
+	builder *messages.ConversationBuilder) {
 
 	prompt := loadCollectionPrompt(html, task, template)
 	mess := messages.StandardMessage{
@@ -29,19 +37,7 @@ func processLoadCollectionPrompt(
 		Content: prompt,
 	}
 
-	fmt.Printf("the address is %p \n", &(llm.engine))
-
-	if err := llm.engine.AppendStandard(&mess); err != nil {
-		return err, ""
-	}
-
-	err, comp := llm.chat(ctx)
-
-	if err != nil {
-		return err, ""
-	}
-
-	return nil, *comp.Content
+	builder.AddStandardMessage(&mess)
 }
 
 /*
@@ -51,7 +47,11 @@ ensures that multiple chat completion requests happen concurrently
 */
 func promptPool(
 	threadCount uint8,
-	promptChat func(str string) (error, string),
+	task,
+	template string,
+	llm *scraper2.LanguageModel,
+	ctx context.Context,
+	builder *messages.ConversationBuilder,
 	strs []*string) {
 
 	type chatResult struct {
@@ -67,18 +67,33 @@ func promptPool(
 	/*
 		schedules all the chat requests that need to happen concurrently
 	*/
-	for _, str := range strs {
-		wg.Add(1)
+	processLoadCollectionPrompt(*strs[0], task, template, builder)
 
+	for _, str := range strs {
 		/*
 			a goroutine that completes a chat request
 		*/
+		builder.Pop(builder.Size() - 1)
+		processLoadCollectionPrompt(*str, task, template, builder)
+
+		err := llm.Validate(builder)
+		if err != nil {
+			panic(err)
+		}
+
+		err, convo := builder.Build()
+		if err != nil {
+			panic(err)
+		}
+
+		wg.Add(1)
 		go func() {
-			workerPool <- struct{}{}        // signal to the worker pool that, work is being done, blocking it once the buffer is full
-			err, result := promptChat(*str) // start the request
+			workerPool <- struct{}{}             // signal to the worker pool that, work is being done, blocking it once the buffer is full
+			err, result := llm.Chat(ctx, &convo) // start the request
+			assistantMessage := result.Content
 			channel <- chatResult{
 				err:      err,
-				response: result,
+				response: *assistantMessage,
 			}
 			wg.Done()
 		}()
@@ -98,27 +113,4 @@ func promptPool(
 			fmt.Println(chatRes.response)
 		}
 	}
-}
-
-func runCollectionPool(
-	task,
-	template string,
-	lm *languageModel,
-	ctx context.Context,
-	threadCount uint8,
-	htmlContext []*string) {
-
-	chat := func(str string) (error, string) {
-		modelCopy := lm.DeepCopy()
-		fmt.Printf("the oriignal address is %p \n", &(lm.engine))
-		fmt.Printf("the copy address is %p \n", &(modelCopy.engine))
-		return processLoadCollectionPrompt(
-			str,
-			task,
-			template,
-			modelCopy,
-			ctx)
-	}
-
-	promptPool(threadCount, chat, htmlContext)
 }

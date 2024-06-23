@@ -2,293 +2,15 @@ package model
 
 import (
 	"agent/llm/messages"
-	"math"
+	"encoding/base64"
 	"strings"
 	"testing"
 )
 
-func TestChatGpt_AppendStandardMessage(t *testing.T) {
-	chat := ChatGpt{
-		Model: "gpt-4-turbo",
-		key:   "test-key",
-	}
+func Test_validateResponseFormat(t *testing.T) {
 
-	tests := []struct {
-		message messages.StandardMessage
-		pass    bool
-		name    string
-	}{
-		{
-			message: messages.StandardMessage{Role: "user", Content: "hello world"},
-			pass:    true, name: "valid standard message",
-		},
-		{
-			message: messages.StandardMessage{Role: "assistant", Content: "bruh"},
-			pass:    false, name: "assistant role with tool call",
-		},
-	}
-
-	boolToInt := func(state bool) uint8 {
-		var ret uint8
-		if state {
-			ret += 1
-		}
-
-		return ret
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if (chat.AppendStandardMessage(&tt.message) != nil) == tt.pass || uint8(len(chat.Messages)) != boolToInt(tt.pass) {
-				expected := func(state bool) string {
-					if state {
-						return "nil"
-					}
-					return "error"
-				}
-				t.Errorf(
-					"expected TestChatGpt_AppendStandardMessage to return an %s but got %s",
-					expected(tt.pass),
-					expected(!tt.pass))
-			}
-
-			if len(chat.Messages) > 0 {
-				var mess []llmMessages
-				chat.Messages = mess
-			}
-		})
-	}
-}
-
-func TestMultiModalBuilder_AddTextContent(t *testing.T) {
-	mess := MultiModalBuilder{
-		message: &messages.MultiModalMessage{Role: "user"},
-	}
-
-	text := "text"
-
-	mess.AddTextContent(text)
-
-	if len(mess.message.Content) != 1 {
-		t.Fatal("content was not added")
-	}
-}
-
-func TestMultiModalBuilder_AddImageUrl(t *testing.T) {
-	mess := MultiModalBuilder{
-		message: &messages.MultiModalMessage{Role: "user"},
-	}
-
-	text := "https://bench-ai.com/logo.jpg"
-	det := "high"
-
-	mess.AddImageUrl(text, &det)
-
-	if len(mess.message.Content) != 1 {
-		t.Fatal("content was not added")
-	}
-}
-
-func TestMultiModalBuilder_AddImageB64(t *testing.T) {
-	data := make([]byte, int64(math.Pow(1024, 1)*20)+1)
-	detail := "auto"
-	imageType := "jpeg"
-
-	for range data {
-		data = append(data, 1)
-	}
-
-	mess := (&MultiModalBuilder{
-		message: &messages.MultiModalMessage{Role: "user"},
-	}).AddImageB64(data, &detail, imageType)
-
-	url := mess.message.Content[0].ImageUrl.Url
-
-	pref := "data:image/jpeg;base64"
-
-	if !strings.HasPrefix(url, pref) {
-		t.Fatal("failed to gpt specific base44 prefix")
-	}
-}
-
-func TestMultiModalBuilder_Build(t *testing.T) {
-	chat := ChatGpt{
-		Model: "gpt-4o",
-		key:   "data",
-	}
-
-	mm := messages.MultiModalMessage{
-		Role: "user",
-	}
-
-	data := make([]byte, int64(math.Pow(1024, 2)*20)+1)
-
-	for idx := range data {
-		data[idx] = 1
-	}
-
-	validData := make([]byte, 1000)
-	copy(validData, data)
-
-	builder := MultiModalBuilder{
-		message: &mm,
-		gpt:     &chat,
-	}
-
-	detail := "auto"
-	badDetail := "medium"
-
-	tests := []struct {
-		pass        bool
-		name        string
-		typeSlice   []string
-		byteSlice   [][]byte
-		detailSlice []*string
-	}{
-		{typeSlice: []string{"png"}, byteSlice: [][]byte{validData}, detailSlice: []*string{nil}, pass: true, name: "valid 1-layer builder"},
-		{typeSlice: []string{"svg"}, byteSlice: [][]byte{validData}, detailSlice: []*string{nil}, pass: false, name: "invalid type"},
-		{typeSlice: []string{"jpeg"}, byteSlice: [][]byte{validData}, detailSlice: []*string{&badDetail}, pass: false, name: "invalid type"},
-		{typeSlice: []string{"jpeg"}, byteSlice: [][]byte{data}, detailSlice: []*string{nil}, pass: false, name: "invalid byteData (too long)"},
-		{typeSlice: []string{"jpeg", "png", "webp"}, byteSlice: [][]byte{validData, validData}, detailSlice: []*string{nil, &detail}, pass: true, name: "valid multi data"},
-		{typeSlice: []string{"jpeg", "png"}, byteSlice: [][]byte{validData, data}, detailSlice: []*string{nil, &detail}, pass: false, name: "invalid multi data"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-
-			builder.imageBytes = tt.byteSlice
-			builder.imageTypes = tt.typeSlice
-			builder.details = tt.detailSlice
-
-			if (builder.Build() != nil) == tt.pass {
-				expected := func(state bool) string {
-					if state {
-						return "nil"
-					}
-					return "error"
-				}
-				t.Errorf(
-					"expected TestChatGpt_AppendStandardMessage to return an %s but got %s",
-					expected(tt.pass),
-					expected(!tt.pass))
-			}
-		})
-	}
-
-	if len(chat.Messages) != 2 {
-		t.Fatal("messages not added properly")
-	}
-}
-
-func TestChatGpt_AppendAssistantMessage(t *testing.T) {
-	cont := "add data"
-	assist := messages.AssistantMessage{
-		Role:    "assistant",
-		Content: &cont,
-	}
-
-	assist2 := messages.AssistantMessage{
-		Role:    "system",
-		Content: &cont,
-	}
-
-	chat := ChatGpt{
-		Model: "gpt-4o",
-		key:   "data",
-	}
-
-	tests := []struct {
-		pass    bool
-		name    string
-		message *messages.AssistantMessage
-	}{
-		{message: &assist, pass: true, name: "valid assistant message"},
-		{message: &assist2, pass: false, name: "invalid assistant message"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-
-			if (chat.AppendAssistantMessage(tt.message) != nil) == tt.pass || (tt.pass && len(chat.Messages) != 1) {
-				expected := func(state bool) string {
-					if state {
-						return "nil"
-					}
-					return "error"
-				}
-				t.Errorf(
-					"expected TestChatGpt_AppendStandardMessage to return an %s but got %s",
-					expected(tt.pass),
-					expected(!tt.pass))
-			}
-		})
-	}
-}
-
-func TestChatGpt_PopMessage(t *testing.T) {
-	chat := ChatGpt{
-		Model: "gpt-4o",
-		key:   "data",
-	}
-
-	for range 50 {
-		_ = chat.AppendStandardMessage(&messages.StandardMessage{
-			Role:    "user",
-			Content: "test message",
-		})
-	}
-
-	if err := chat.PopMessage(25); err != nil {
-		t.Error(err)
-	}
-
-	if err := chat.PopMessage(100); err == nil {
-		t.Errorf("deleted from invalid index")
-	}
-
-	for range chat.Messages {
-		if err := chat.PopMessage(0); err != nil {
-			t.Errorf("threw unnessecary error, %v", err)
-		}
-	}
-}
-
-func TestInitChatGpt(t *testing.T) {
-	tests := []struct {
-		key   string
-		model string
-		pass  bool
-		name  string
-	}{
-		{key: "", model: "gpt4-o", pass: false, name: "valid key"},
-		{key: "123", model: "", pass: false, name: "valid model"},
-		{key: "123", model: "gpt4", pass: true, name: "valid model"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err, _ := InitChatGpt(tt.key, tt.model)
-			if (err != nil) == tt.pass {
-				expected := func(state bool) string {
-					if state {
-						return "nil"
-					}
-					return "error"
-				}
-				t.Errorf(
-					"expected TestChatGpt_AppendStandardMessage to return an %s but got %s",
-					expected(tt.pass),
-					expected(!tt.pass))
-			}
-		})
-	}
-
-}
-
-func TestValidateResponseFormat(t *testing.T) {
-
-	validEngine := getEngineMap()["gpt-4o"]
-	invalidEngine := engine{
+	validEngine := GetEngineMap()["gpt-4o"]
+	invalidEngine := Engine{
 		HasJsonMode: false,
 		Name:        "test-llm",
 	}
@@ -316,7 +38,7 @@ func TestValidateResponseFormat(t *testing.T) {
 	}
 
 	tests := []struct {
-		engine         engine
+		engine         Engine
 		responseFormat map[string]string
 		pass           bool
 		name           string
@@ -347,7 +69,7 @@ func TestValidateResponseFormat(t *testing.T) {
 	}
 }
 
-func TestValidateTools(t *testing.T) {
+func Test_validateTools(t *testing.T) {
 
 	func1 := messages.ToolFunction{
 		Name:       "test",
@@ -359,12 +81,12 @@ func TestValidateTools(t *testing.T) {
 		Function: func1,
 	}
 
-	invalidEngine := engine{
+	invalidEngine := Engine{
 		FunctionCalling: false,
 		Name:            "test-llm",
 	}
 
-	engine := getEngineMap()["gpt-4o"]
+	engine := GetEngineMap()["gpt-4o"]
 
 	if err := validateTools(engine, t1); err != nil {
 		t.Error("rejected function that was not invalid")
@@ -376,14 +98,14 @@ func TestValidateTools(t *testing.T) {
 		t.Error("failed to reject invalid tool type")
 	}
 
-	engine = getEngineMap()["gpt-3.5-turbo"]
+	engine = GetEngineMap()["gpt-3.5-turbo"]
 
 	if err := validateTools(invalidEngine, t1); err == nil {
 		t.Error("failed to reject invalid engine that has no function calling capabilities")
 	}
 }
 
-func TestValidateToolChoice(t *testing.T) {
+func Test_validateToolChoice(t *testing.T) {
 
 	toolChoicesStringPass := "auto"
 
@@ -420,31 +142,89 @@ func TestValidateToolChoice(t *testing.T) {
 	}
 }
 
-func TestValidateMessageType(t *testing.T) {
-	testSlice := []string{
-		"standard",
-		"assistant",
-		"multimodal",
-		"assistant",
-		"standard",
-	}
+func Test_checkB64(t *testing.T) {
+	t.Run("test invalid base64 string", func(t *testing.T) {
+		str := "false"
+		if checkB64(str) == nil {
+			t.Error("could not catch invalid b64 string")
+		}
+	})
 
-	eng := getEngineMap()["gpt-4o"]
+	t.Run("test large base64", func(t *testing.T) {
+		bt := make([]byte, 20*MEGABYTE+1)
 
-	err := validateMessageType(eng, testSlice)
+		for index := range 20*MEGABYTE + 1 {
+			bt[index] = 'a'
+		}
 
-	if err != nil {
-		t.Error(err)
-	}
+		enc := base64.StdEncoding.EncodeToString(bt)
 
-	eng = engine{
-		Name: "fail",
-	}
+		if checkB64(enc) == nil {
+			t.Error("could not catch invalid b64 string")
+		}
+	})
 
-	err = validateMessageType(eng, testSlice)
+	t.Run("valid base64", func(t *testing.T) {
+		bt := make([]byte, 10)
 
-	if err == nil {
-		t.Error("invalid engine succeeded")
-	}
+		for index := range 10 {
+			bt[index] = 'a'
+		}
+
+		enc := base64.StdEncoding.EncodeToString(bt)
+
+		if checkB64(enc) != nil {
+			t.Error("failed valid b64")
+		}
+	})
+}
+
+func Test_handleContent(t *testing.T) {
+
+	t.Run("invalid url", func(t *testing.T) {
+		invalidUrl := messages.MultiModalMessage{
+			Role: "user",
+		}
+
+		invalidUrl.AppendImageUrl("asdasdas", nil)
+
+		if err := handleContent(&invalidUrl.Content[0]); err == nil {
+			t.Errorf("should not accept invalid url")
+		}
+
+		invalidUrl.Content[0].ImageUrl.Url = "https://data.com/img.jpg"
+		if err := handleContent(&invalidUrl.Content[0]); err != nil {
+			t.Errorf("should accept invalid url")
+		}
+	})
+
+	t.Run("invalid extension", func(t *testing.T) {
+		invalidUrl := messages.MultiModalMessage{
+			Role: "user",
+		}
+
+		invalidUrl.AppendImageBytes([]byte{}, nil, "svg")
+
+		if err := handleContent(&invalidUrl.Content[0]); err == nil {
+			t.Errorf("invalid extenstion was accepted")
+		}
+	})
+
+	t.Run("invalid extension", func(t *testing.T) {
+		invalidUrl := messages.MultiModalMessage{
+			Role: "user",
+		}
+
+		imageBytes := make([]byte, 10_000)
+		invalidUrl.AppendImageBytes(imageBytes, nil, "png")
+
+		if err := handleContent(&invalidUrl.Content[0]); err != nil {
+			t.Error(err)
+		}
+
+		if !strings.HasPrefix(invalidUrl.Content[0].ImageUrl.Url, "data:image/") {
+			t.Errorf("base64 string was never modified")
+		}
+	})
 
 }

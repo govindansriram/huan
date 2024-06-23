@@ -5,11 +5,13 @@ import (
 	"agent/llm/messages"
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 )
 
 const (
@@ -18,20 +20,11 @@ const (
 )
 
 /*
-llmMessages
-
-an interface for all messages being passed into a llm to follow
-*/
-type llmMessages interface {
-	Validate() error
-}
-
-/*
-engine
+Engine
 
 a struct representing the capabilities of a llm
 */
-type engine struct {
+type Engine struct {
 	ContextWindow   uint32
 	HasJsonMode     bool
 	Name            string
@@ -40,16 +33,36 @@ type engine struct {
 }
 
 /*
-getEngineMap
+GetEngineMap
 
 returns a map of all available chatgpt engines
 */
-func getEngineMap() map[string]engine {
-	gpt3turbo := engine{16385, true, "gpt-3.5-turbo", false, true}
-	gpt4O := engine{128000, true, "gpt-4o", true, true}
-	gpt4Turbo := engine{ContextWindow: 128000, HasJsonMode: true, Name: "gpt-4-turbo", Multimodal: true, FunctionCalling: true}
+func GetEngineMap() map[string]Engine {
+	gpt3turbo := Engine{
+		16385,
+		true,
+		"gpt-3.5-turbo",
+		false,
+		true,
+	}
 
-	return map[string]engine{
+	gpt4O := Engine{
+		128000,
+		true,
+		"gpt-4o",
+		true,
+		true,
+	}
+
+	gpt4Turbo := Engine{
+		ContextWindow:   128000,
+		HasJsonMode:     true,
+		Name:            "gpt-4-turbo",
+		Multimodal:      true,
+		FunctionCalling: true,
+	}
+
+	return map[string]Engine{
 		gpt4Turbo.Name: gpt4Turbo,
 		gpt3turbo.Name: gpt3turbo,
 		gpt4O.Name:     gpt4O,
@@ -64,7 +77,7 @@ A list of all the engines as a string
 func getEngineOptionList() string {
 
 	engineString := ""
-	for k := range getEngineMap() {
+	for k := range GetEngineMap() {
 		engineString += k + ", "
 	}
 
@@ -77,210 +90,23 @@ ChatGpt
 holds all the data to make requests with ChatGpt
 */
 type ChatGpt struct {
-	Model            string             `json:"model"`
-	FrequencyPenalty *float32           `json:"frequency_penalty,omitempty"`
-	Messages         []llmMessages      `json:"messages"`
-	LogitBias        *map[string]int    `json:"logit_bias,omitempty"`
-	LogProbs         *bool              `json:"log_probs,omitempty"`
-	TopLogprobs      *uint8             `json:"top_logprobs,omitempty"`
-	MaxTokens        *int               `json:"max_tokens,omitempty"`
-	N                *int               `json:"n,omitempty"`
-	PresencePenalty  *float32           `json:"presence_penalty,omitempty"`
-	ResponseFormat   *map[string]string `json:"response_format,omitempty"`
-	Seed             *int               `json:"seed,omitempty"`
-	Stop             *interface{}       `json:"stop,omitempty"`
-	Stream           *bool              `json:"stream,omitempty"`
-	Temperature      *float32           `json:"temperature,omitempty"`
-	TopP             *float32           `json:"top_p,omitempty"`
-	Tools            *[]messages.Tool   `json:"tools,omitempty"`
-	ToolChoice       interface{}        `json:"tool_choice"`
-	key              string
-	messageType      []string
-	roleType         []string
-}
-
-/*
-AppendStandardMessage
-
-adds a standard message to the chatgpt message slice, this message can act as extra context, memory or the current
-query
-*/
-func (c *ChatGpt) AppendStandardMessage(message *messages.StandardMessage) error {
-	if err := message.Validate(); err != nil {
-		return err
-	}
-
-	c.Messages = append(c.Messages, message)
-	c.messageType = append(c.messageType, "standard")
-	c.roleType = append(c.roleType, message.Role)
-	return nil
-}
-
-/*
-MultiModalBuilder
-
-constructs a MultiModalMessage compatible with openai gpts
-*/
-type MultiModalBuilder struct {
-	message    *messages.MultiModalMessage
-	imageTypes []string
-	imageBytes [][]byte
-	details    []*string
-	gpt        *ChatGpt
-}
-
-/*
-AddTextContent
-
-add text content to gpt multimodal message
-*/
-func (m *MultiModalBuilder) AddTextContent(text string) *MultiModalBuilder {
-	m.message.AppendText(text)
-	return m
-}
-
-/*
-AddImageUrl
-
-add text content to gpt multimodal message
-*/
-func (m *MultiModalBuilder) AddImageUrl(url string, detail *string) *MultiModalBuilder {
-	m.message.AppendImageUrl(url, detail)
-	m.details = append(m.details, detail)
-	return m
-}
-
-/*
-AddImageB64
-
-add base64 image bytes to gpt, in preferred gpt standard
-*/
-func (m *MultiModalBuilder) AddImageB64(imageBytes []byte, detail *string, imageType string) *MultiModalBuilder {
-	startPos := len(m.message.Content)
-	m.message.AppendImageBytes(imageBytes, detail)
-	m.message.Content[startPos].ImageUrl.Url = fmt.Sprintf(
-		"data:image/%s;base64,%s",
-		imageType,
-		m.message.Content[startPos].ImageUrl.Url)
-
-	m.imageTypes = append(m.imageTypes, imageType)
-	m.details = append(m.details, detail)
-	m.imageBytes = append(m.imageBytes, imageBytes)
-
-	return m
-}
-
-/*
-Build
-
-appends the multimodal message to the message slice, if the message is valid
-*/
-func (m *MultiModalBuilder) Build() error {
-	supported := []string{
-		"png", "jpeg", "jpg", "webp", "gif",
-	}
-
-	detail := []string{
-		"high", "low", "auto",
-	}
-
-	for _, det := range m.details {
-		if det != nil {
-			if !helper.Contains[string](detail, *det) {
-				return fmt.Errorf("%s is not a valid detail", *det)
-			}
-		}
-	}
-
-	for _, imgTyp := range m.imageTypes {
-		if !helper.Contains[string](supported, imgTyp) {
-			return fmt.Errorf("%s is not a supported image type", imgTyp)
-		}
-	}
-
-	for _, img := range m.imageBytes {
-		if len(img) > 20*MEGABYTE {
-			return errors.New("too many bytes in the image, the limit is 20MB")
-		}
-	}
-
-	if err := m.message.Validate(); err != nil {
-		return err
-	}
-
-	m.gpt.messageType = append(m.gpt.messageType, "multimodal")
-	m.gpt.Messages = append(m.gpt.Messages, m.message)
-	m.gpt.roleType = append(m.gpt.roleType, m.message.Role)
-
-	return nil
-}
-
-/*
-GetMultiModalMessage
-
-gets a multimodal message builder, the builder upon building will be added to the message slice
-*/
-func (c *ChatGpt) GetMultiModalMessage(role string) *MultiModalBuilder {
-	return &MultiModalBuilder{
-		message: &messages.MultiModalMessage{Role: role},
-		gpt:     c,
-	}
-}
-
-func (c *ChatGpt) AppendAssistantMessage(message *messages.AssistantMessage) error {
-	if err := message.Validate(); err != nil {
-		return err
-	}
-
-	c.messageType = append(c.messageType, "assistant")
-	c.Messages = append(c.Messages, message)
-	c.roleType = append(c.roleType, message.Role)
-	return nil
-}
-
-func (c *ChatGpt) PopMessage(index uint) {
-	delMes := helper.DeleteByIndex[llmMessages]
-	delStr := helper.DeleteByIndex[string]
-
-	llmMess := delMes(c.Messages, index)
-	mType := delStr(c.messageType, index)
-	roleSlice := delStr(c.roleType, index)
-
-	c.Messages = llmMess
-	c.messageType = mType
-	c.roleType = roleSlice
-}
-
-/*
-InitChatGpt
-
-initialize a ChatGpt instance with certain filled values
-*/
-func InitChatGpt(
-	apiKey string,
-	model string) (error, *ChatGpt) {
-
-	if apiKey == "" {
-		return errors.New("openai settings received empty api key"), nil
-	}
-	if model == "" {
-		return errors.New("openai settings received empty model name"), nil
-	}
-
-	if val, ok := getEngineMap()[model]; !ok {
-		return fmt.Errorf("gpt model %s is not permitted", val.Name), nil
-	}
-
-	c := ChatGpt{
-		Model: model,
-		key:   apiKey,
-	}
-
-	c.Messages = make([]llmMessages, 0, 10)
-	c.messageType = make([]string, 0, len(c.Messages))
-	c.roleType = make([]string, 0, len(c.Messages))
-
-	return nil, &c
+	Model            string
+	FrequencyPenalty *float32
+	LogitBias        *map[string]int
+	LogProbs         *bool
+	TopLogprobs      *uint8
+	MaxTokens        *int
+	N                *int
+	PresencePenalty  *float32
+	ResponseFormat   *map[string]string
+	Seed             *int
+	Stop             *interface{}
+	Stream           *bool
+	Temperature      *float32
+	TopP             *float32
+	Tools            *[]messages.Tool
+	ToolChoice       interface{}
+	Key              string
 }
 
 /*
@@ -311,7 +137,7 @@ validateResponseFormat
 
 validates that the response format you requested is valid, such as json_object
 */
-func validateResponseFormat(responseFormat map[string]string, engine engine) error {
+func validateResponseFormat(responseFormat map[string]string, engine Engine) error {
 
 	validSlice := []string{
 		"json_object", "text",
@@ -320,7 +146,7 @@ func validateResponseFormat(responseFormat map[string]string, engine engine) err
 	containsString := helper.Contains[string]
 
 	if len(responseFormat) > 1 {
-		return fmt.Errorf("response format musto only have one key, detected %d keys", len(responseFormat))
+		return fmt.Errorf("response format must only have one key, detected %d keys", len(responseFormat))
 	}
 
 	var v string
@@ -406,38 +232,98 @@ func validateToolChoice(toolChoice interface{}) error {
 }
 
 /*
-validateMessageType
+checkB64
 
-validates the messages provided are compatible with the model being used
+check if a string is a valid base64 with under 20mb of data
 */
-func validateMessageType(engine engine, messageTypeSlice []string) error {
-	var isMM bool
+func checkB64(str string) error {
+	sDec, err := base64.StdEncoding.DecodeString(str)
 
-	for _, typ := range messageTypeSlice {
-		if typ == "multimodal" {
-			isMM = true
-			break
-		}
+	if err != nil {
+		return err
 	}
 
-	if isMM && !engine.Multimodal {
-		return fmt.Errorf("cannot use %s with mutimodal messages", engine.Name)
+	if len(sDec) > 20*MEGABYTE {
+		return errors.New("image exceeds 20MB")
 	}
 
 	return nil
 }
 
-func validateMessages(messageSlice []llmMessages) error {
-	for _, i := range messageSlice {
-		if err := i.Validate(); err != nil {
-			return err
+/*
+handleContent
+
+checks if multimodal content is valid and if so alters it to work with a chatgpt request
+*/
+func handleContent(content *messages.MultimodalContent) error {
+
+	//TODO: Please Refactor
+
+	validExt := []string{
+		"png", "jpeg", "jpg", "webp", "gif",
+	}
+
+	containsString := helper.Contains[string]
+
+	if content.Type == "image_url" {
+		if content.ImageUrl.Type == "" {
+			if !strings.HasPrefix(content.ImageUrl.Url, "http") {
+				return errors.New("image url is invalid")
+			}
+		} else if !containsString(validExt, content.ImageUrl.Type) {
+			return fmt.Errorf("images of type %s are not accepted in chatgpt multimodal requests", content.Type)
+		} else if !strings.HasPrefix(content.ImageUrl.Url, "data:image/") {
+			if err := checkB64(content.ImageUrl.Url); err != nil {
+				return err
+			}
+
+			content.ImageUrl.Url = fmt.Sprintf(
+				`data:image/%s;base64,%s`,
+				content.ImageUrl.Type,
+				content.ImageUrl.Url)
+
 		}
 	}
 
 	return nil
 }
 
-func validateTools(engine engine, tool messages.Tool) error {
+/*
+adjustConversation
+
+check the content for all multimodal messages and ensure they are compliant with gpt requirements
+*/
+func adjustConversation(conversation *messages.ConversationBuilder) error {
+	for i := range conversation.Size() {
+		if conversation.GetMessageType(i) == "multimodal" {
+			mess := conversation.ConvertToMultiModal(i)
+			for _, content := range mess.Content {
+				if err := handleContent(&content); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+/*
+checkIsEngineCapable
+
+check if an engine is chatgpt engine is capable of fulfilling multimodal requests
+*/
+func checkIsEngineCapable(engine Engine, convo *messages.ConversationBuilder) error {
+	for i := range convo.Size() {
+		if convo.GetMessageType(i) == "multimodal" && !engine.Multimodal {
+			return fmt.Errorf("engine: %s, lacks multimodal capabilities", engine.Name)
+		}
+	}
+
+	return nil
+}
+
+func validateTools(engine Engine, tool messages.Tool) error {
 	validSlice := []string{
 		"function",
 	}
@@ -460,9 +346,25 @@ Validate
 
 validates the gpt parameters are correct
 */
-func (c *ChatGpt) Validate() error {
+func (c *ChatGpt) Validate(convo *messages.ConversationBuilder) error {
 	floatHelper := helper.IsBetween[float32]
 	intHelper := helper.IsBetween[uint8]
+
+	if c.Key == "" {
+		return errors.New("openai settings received empty api key")
+	}
+
+	if c.Model == "" {
+		return errors.New("openai settings received empty model name")
+	}
+
+	if err := adjustConversation(convo); err != nil {
+		return err
+	}
+
+	if val, ok := GetEngineMap()[c.Model]; !ok {
+		return fmt.Errorf("gpt model %s is not permitted", val.Name)
+	}
 
 	if c.FrequencyPenalty != nil && !floatHelper(-2.0, 2.0, *c.FrequencyPenalty, true, true) {
 		return fmt.Errorf("frequency penalty must be between -2.0 and 2.0 got %f", *c.FrequencyPenalty)
@@ -484,10 +386,10 @@ func (c *ChatGpt) Validate() error {
 		return fmt.Errorf("top p must be between 0.0 and 1.0 got %f", *c.TopP)
 	}
 
-	var engine engine
+	var engine Engine
 	var ok bool
 
-	if engine, ok = getEngineMap()[c.Model]; !ok {
+	if engine, ok = GetEngineMap()[c.Model]; !ok {
 		return fmt.Errorf(
 			"gpt has no integrated engine named %s, available options are %s",
 			c.Model,
@@ -510,11 +412,7 @@ func (c *ChatGpt) Validate() error {
 		}
 	}
 
-	if err := validateMessages(c.Messages); err != nil {
-		return err
-	}
-
-	if err := validateMessageType(engine, c.messageType); err != nil {
+	if err := checkIsEngineCapable(engine, convo); err != nil {
 		return err
 	}
 
@@ -541,22 +439,57 @@ returns:
 - a chat completion pointer: contains the request response
 */
 
-func (c *ChatGpt) Chat(ctx context.Context) (error, *bool, *messages.ChatCompletion) {
+func (c *ChatGpt) Chat(
+	convo messages.Conversation,
+	ctx context.Context) (error, *bool, *messages.ChatCompletion) {
+
 	var isRateLimit bool
 
-	fmt.Printf("%p, %p \n", &c.Messages, c)
-	fmt.Println(len(c.Messages))
-
-	if c.roleType[len(c.roleType)-1] != "user" {
-		return fmt.Errorf("the role for the last message must be user, got %s", c.roleType), &isRateLimit, nil
+	type chatGpt struct {
+		Model            string                `json:"model"`
+		FrequencyPenalty *float32              `json:"frequency_penalty,omitempty"`
+		Messages         messages.Conversation `json:"messages"`
+		LogitBias        *map[string]int       `json:"logit_bias,omitempty"`
+		LogProbs         *bool                 `json:"log_probs,omitempty"`
+		TopLogprobs      *uint8                `json:"top_logprobs,omitempty"`
+		MaxTokens        *int                  `json:"max_tokens,omitempty"`
+		N                *int                  `json:"n,omitempty"`
+		PresencePenalty  *float32              `json:"presence_penalty,omitempty"`
+		ResponseFormat   *map[string]string    `json:"response_format,omitempty"`
+		Seed             *int                  `json:"seed,omitempty"`
+		Stop             *interface{}          `json:"stop,omitempty"`
+		Stream           *bool                 `json:"stream,omitempty"`
+		Temperature      *float32              `json:"temperature,omitempty"`
+		TopP             *float32              `json:"top_p,omitempty"`
+		Tools            *[]messages.Tool      `json:"tools,omitempty"`
+		ToolChoice       interface{}           `json:"tool_choice"`
+		key              string
 	}
 
-	if err := c.Validate(); err != nil {
-		return err, &isRateLimit, nil
+	n := 1
+
+	chatSettings := chatGpt{
+		Model:            c.Model,
+		FrequencyPenalty: c.FrequencyPenalty,
+		Messages:         convo,
+		LogitBias:        c.LogitBias,
+		LogProbs:         c.LogProbs,
+		TopLogprobs:      c.TopLogprobs,
+		MaxTokens:        c.MaxTokens,
+		N:                &n,
+		PresencePenalty:  c.PresencePenalty,
+		ResponseFormat:   c.ResponseFormat,
+		Seed:             c.Seed,
+		Stop:             c.Stop,
+		Stream:           c.Stream,
+		Temperature:      c.Temperature,
+		TopP:             c.TopP,
+		Tools:            c.Tools,
+		ToolChoice:       c.ToolChoice,
 	}
 
 	url := "https://api.openai.com/v1/chat/completions"
-	jsonBytes, err := json.Marshal(c)
+	jsonBytes, err := json.Marshal(chatSettings)
 
 	if err != nil {
 		return err, &isRateLimit, nil
@@ -571,7 +504,7 @@ func (c *ChatGpt) Chat(ctx context.Context) (error, *bool, *messages.ChatComplet
 	}
 
 	pRequest.Header.Set("Content-Type", "application/json")
-	pRequest.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.key))
+	pRequest.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.Key))
 
 	pResponse, err := client.Do(pRequest)
 
@@ -613,44 +546,5 @@ func (c *ChatGpt) Chat(ctx context.Context) (error, *bool, *messages.ChatComplet
 		}
 
 		return err, &isRateLimit, nil
-	}
-}
-
-func (c *ChatGpt) DeepCopy() *ChatGpt {
-
-	//frq := *c.FrequencyPenalty
-	//lb := *c.LogitBias
-	//lp := *c.LogProbs
-	//maxTok := *c.MaxTokens
-	//n := *c.N
-	//pr := *c.PresencePenalty
-	//rp := *c.ResponseFormat
-	//seed := *c.Seed
-	//stop := *c.Stop
-	//stream := *c.Stream
-	//temp := *c.Temperature
-	//topP := *c.TopP
-	//tools := *c.Tools
-
-	return &ChatGpt{
-		Model:            c.Model,
-		FrequencyPenalty: c.FrequencyPenalty,
-		Messages:         c.Messages,
-		LogitBias:        c.LogitBias,
-		LogProbs:         c.LogProbs,
-		MaxTokens:        c.MaxTokens,
-		N:                c.N,
-		PresencePenalty:  c.PresencePenalty,
-		ResponseFormat:   c.ResponseFormat,
-		Seed:             c.Seed,
-		Stop:             c.Stop,
-		Stream:           c.Stream,
-		Temperature:      c.Temperature,
-		TopP:             c.TopP,
-		Tools:            c.Tools,
-		ToolChoice:       c.ToolChoice,
-		key:              c.key,
-		messageType:      c.messageType,
-		roleType:         c.roleType,
 	}
 }

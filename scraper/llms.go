@@ -5,88 +5,58 @@ import (
 	"agent/llm/model"
 	"context"
 	"errors"
+	"fmt"
 	"gopkg.in/yaml.v3"
 	"log"
 	"math"
+	"strings"
 	"time"
 )
 
-type Chatgpt struct {
-	chat *model.ChatGpt
+type bot interface {
+	Chat(convo messages.Conversation, ctx context.Context) (error, *bool, *messages.ChatCompletion)
+	Validate(convo *messages.ConversationBuilder) error
 }
 
-func (c *Chatgpt) AppendAssistant(message *messages.AssistantMessage) error {
-	return c.chat.AppendAssistantMessage(message)
-}
+func loadChatgptFromYML(
+	modelSettings map[string]interface{},
+	maxTokens uint16) (error, *model.ChatGpt) {
 
-func (c *Chatgpt) AppendStandard(message *messages.StandardMessage) error {
-	return c.chat.AppendStandardMessage(message)
-}
-
-func (c *Chatgpt) AppendMultiModal(imageBytes []byte, role string, detail *string, imageType string) error {
-	mess := c.chat.GetMultiModalMessage(role)
-	mess.AddImageB64(imageBytes, detail, imageType)
-	return mess.Build()
-}
-
-func (c *Chatgpt) Pop(index uint) {
-	c.chat.PopMessage(index)
-}
-
-func (c *Chatgpt) Chat(ctx context.Context) (error, *bool, *messages.ChatCompletion) {
-	return c.chat.Chat(ctx)
-}
-
-func (c *Chatgpt) deepCopy() llm {
-	//c.chat = c.chat.DeepCopy()
-	return &Chatgpt{
-		chat: c.chat.DeepCopy(),
-	}
-}
-
-func loadCGptFromYaml(data []byte, maxTokens uint16) (error, *Chatgpt) {
 	cGpt := &struct {
 		ApiKey      string   `yaml:"apiKey"`
 		Model       string   `yaml:"model"`
 		Temperature *float32 `yaml:"temperature"`
 	}{}
 
-	err := yaml.Unmarshal(data, cGpt)
+	additionalSettings, err := yaml.Marshal(modelSettings)
 
 	if err != nil {
 		return err, nil
 	}
 
-	err, chat := model.InitChatGpt(cGpt.ApiKey, cGpt.Model)
+	err = yaml.Unmarshal(additionalSettings, cGpt)
 
 	if err != nil {
 		return err, nil
 	}
 
-	mt := int(maxTokens)
-
-	chat.MaxTokens = &(mt)
-	chat.Temperature = cGpt.Temperature
-
-	return nil, &Chatgpt{
-		chat: chat,
+	maxTok := int(maxTokens)
+	c := model.ChatGpt{
+		Key:         cGpt.ApiKey,
+		Model:       cGpt.Model,
+		Temperature: cGpt.Temperature,
+		MaxTokens:   &maxTok,
 	}
-}
 
-type llm interface {
-	AppendAssistant(message *messages.AssistantMessage) error
-	AppendStandard(message *messages.StandardMessage) error
-	AppendMultiModal(imageBytes []byte, role string, detail *string, imageType string) error
-	Pop(index uint)
-	Chat(ctx context.Context) (error, *bool, *messages.ChatCompletion)
-	deepCopy() llm
+	return nil, &c
 }
 
 func exponentialBackoff(
 	parentCtx context.Context,
-	model llm,
+	model bot,
 	maxWaitTime uint16,
-	tryLimit uint8) (error, *messages.AssistantMessage) {
+	tryLimit uint8,
+	conversation messages.Conversation) (error, *messages.AssistantMessage) {
 
 	type retStruct struct {
 		message    *messages.AssistantMessage
@@ -94,9 +64,9 @@ func exponentialBackoff(
 		isWaitTime bool
 	}
 
-	req := func(mod llm, ctx context.Context, c chan<- *retStruct) {
+	req := func(mod bot, ctx context.Context, c chan<- *retStruct) {
 
-		err, bo, comp := mod.Chat(ctx)
+		err, bo, comp := mod.Chat(conversation, ctx)
 
 		var mess *messages.AssistantMessage
 		if comp != nil {
@@ -157,4 +127,71 @@ func exponentialBackoff(
 
 	log.Println("try limit reached request has failed")
 	return errors.New("reached try limit for chat request"), nil
+}
+
+/*
+LanguageModel
+
+a wrapper struct around a llm with easy chat requests and defaults
+*/
+type LanguageModel struct {
+	tryLimit uint8
+	duration uint16
+	bot      bot
+}
+
+func (l *LanguageModel) Chat(ctx context.Context, convo *messages.Conversation) (error, *messages.AssistantMessage) {
+	return exponentialBackoff(ctx, l.bot, l.duration, l.tryLimit, *convo)
+}
+
+func (l *LanguageModel) Validate(convo *messages.ConversationBuilder) error {
+	err := l.bot.Validate(convo)
+	return err
+}
+
+func initLanguageModel(
+	modelType string,
+	settings map[string]interface{},
+	tryLimit *uint8,
+	maxTokens *uint16,
+	duration *uint16) (error, *LanguageModel) {
+
+	var tokenLimit uint16
+
+	lang := &LanguageModel{}
+
+	if duration == nil {
+		lang.duration = 100
+	} else {
+		lang.duration = *duration
+	}
+
+	if tryLimit == nil {
+		lang.tryLimit = 4
+	} else {
+		lang.tryLimit = *tryLimit
+	}
+
+	if maxTokens == nil {
+		tokenLimit = 500
+	}
+
+	var b bot
+
+	switch strings.ToLower(modelType) {
+	case "openai":
+		err, mod := loadChatgptFromYML(settings, tokenLimit)
+
+		if err != nil {
+			return err, nil
+		}
+
+		b = mod
+
+	default:
+		return fmt.Errorf("there is no llm type %s", modelType), nil
+	}
+
+	lang.bot = b
+	return nil, lang
 }

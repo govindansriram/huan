@@ -53,6 +53,42 @@ func invalidRoleError(roleSlice []string, role string) error {
 }
 
 /*
+message
+
+represents messages that can be used in a llm conversation
+*/
+type message interface {
+	validate() error
+}
+
+/*
+Conversation
+
+a llm conversation
+*/
+type Conversation []message
+
+/*
+ConversationBuilder
+
+provides helpful functions to make a llm Conversation
+*/
+type ConversationBuilder struct {
+	conversation Conversation
+	roles        []string
+	messageTypes []string
+}
+
+/*
+Size
+
+get the length of the current conversation
+*/
+func (c *ConversationBuilder) Size() int {
+	return len(c.conversation)
+}
+
+/*
 StandardMessage
 
 a standard message chat request that only contains text
@@ -64,11 +100,11 @@ type StandardMessage struct {
 }
 
 /*
-Validate
+validate
 
 ensure the message is valid for llm ingestion
 */
-func (s StandardMessage) Validate() error {
+func (s *StandardMessage) validate() error {
 	roles := [2]string{
 		"system", "user",
 	}
@@ -85,6 +121,18 @@ func (s StandardMessage) Validate() error {
 }
 
 /*
+AddStandardMessage
+
+adds a standard message to the conversation
+*/
+func (c *ConversationBuilder) AddStandardMessage(mess *StandardMessage) *ConversationBuilder {
+	c.messageTypes = append(c.messageTypes, "standard")
+	c.roles = append(c.roles, mess.Role)
+	c.conversation = append(c.conversation, mess)
+	return c
+}
+
+/*
 imageContent
 
 represents the image that would be passed into multimodal requests. The image could be a base64 string, or it can be
@@ -93,31 +141,17 @@ an url to an image
 type imageContent struct {
 	Url    string  `json:"url"`
 	Detail *string `json:"detail,omitempty"`
+	Type   string
 }
 
 /*
-validate
-
-ensures a image is not empty
-*/
-func (i *imageContent) validate() error {
-	err := errors.New("image message is invalid")
-
-	if strings.HasPrefix(i.Url, "data:image/") || strings.HasPrefix(i.Url, "http") {
-		return nil
-	}
-
-	return err
-}
-
-/*
-multimodalContent
+MultimodalContent
 
 what a multimodal message is composed of
 it can contain one of two Types image_url, or text
 based on what category it is the relevant section should be filled
 */
-type multimodalContent struct {
+type MultimodalContent struct {
 	Type     string        `json:"type"`
 	Text     *string       `json:"text,omitempty"`
 	ImageUrl *imageContent `json:"image_url,omitempty"`
@@ -128,13 +162,15 @@ validate
 
 ensures multimodal message contains usable valid data
 */
-func (mc *multimodalContent) validate() error {
+func (mc *MultimodalContent) validate() error {
 
 	if mc.Type == "image_url" {
-		if mc.ImageUrl != nil {
-			return mc.ImageUrl.validate()
-		} else {
+		if mc.ImageUrl == nil {
 			return errors.New("when using Type image_url, ImageUrl cannot be nil")
+		}
+
+		if mc.ImageUrl.Url == "" {
+			return errors.New("the Url for the multimodal message was found empty")
 		}
 	} else if mc.Type == "text" {
 		if mc.Text == nil {
@@ -158,7 +194,7 @@ the multimodal message being sent to the llm
 */
 type MultiModalMessage struct {
 	Role    string              `json:"role"`
-	Content []multimodalContent `json:"content"`
+	Content []MultimodalContent `json:"content"`
 	Name    *string             `json:"name,omitempty"`
 }
 
@@ -168,7 +204,7 @@ AppendImageUrl
 adds an image url to the message array
 */
 func (m *MultiModalMessage) AppendImageUrl(url string, detail *string) {
-	m.Content = append(m.Content, multimodalContent{
+	m.Content = append(m.Content, MultimodalContent{
 		Type: "image_url",
 		ImageUrl: &imageContent{
 			Url:    url,
@@ -182,14 +218,14 @@ AppendImageBytes
 
 converts bytes to base64 and adds then to the message array
 */
-func (m *MultiModalMessage) AppendImageBytes(imageBytes []byte, detail *string) {
+func (m *MultiModalMessage) AppendImageBytes(imageBytes []byte, detail *string, imageType string) {
 	encodedStr := base64.StdEncoding.EncodeToString(imageBytes)
-	//b64 := fmt.Sprintf("data:image/%s;base64,%s", imageType, encodedStr)
-	m.Content = append(m.Content, multimodalContent{
+	m.Content = append(m.Content, MultimodalContent{
 		Type: "image_url",
 		ImageUrl: &imageContent{
 			Url:    encodedStr,
 			Detail: detail,
+			Type:   imageType,
 		},
 	})
 }
@@ -200,7 +236,7 @@ AppendText
 appends text to the multimodal message
 */
 func (m *MultiModalMessage) AppendText(text string) {
-	m.Content = append(m.Content, multimodalContent{
+	m.Content = append(m.Content, MultimodalContent{
 		Type: "text",
 		Text: &text,
 	})
@@ -211,7 +247,7 @@ Validate
 
 ensures the multimodal message is compliant
 */
-func (m *MultiModalMessage) Validate() error {
+func (m *MultiModalMessage) validate() error { //TODO TESTING
 	roles := [2]string{
 		"system", "user",
 	}
@@ -227,6 +263,18 @@ func (m *MultiModalMessage) Validate() error {
 	}
 
 	return nil
+}
+
+/*
+AddMultimodalMessage
+
+adds a multimodal message to the conversation
+*/
+func (c *ConversationBuilder) AddMultimodalMessage(mess *MultiModalMessage) *ConversationBuilder {
+	c.messageTypes = append(c.messageTypes, "multimodal")
+	c.roles = append(c.roles, mess.Role)
+	c.conversation = append(c.conversation, mess)
+	return c
 }
 
 /*
@@ -261,7 +309,7 @@ Validate
 
 assures an AssistantMessage is compliant
 */
-func (g AssistantMessage) Validate() error {
+func (g *AssistantMessage) validate() error {
 	roles := [2]string{
 		"assistant",
 	}
@@ -289,6 +337,82 @@ func (g AssistantMessage) Validate() error {
 	}
 
 	return nil
+}
+
+func (c *ConversationBuilder) AddAssistantMessage(mess *AssistantMessage) *ConversationBuilder {
+	c.messageTypes = append(c.messageTypes, "assistant")
+	c.roles = append(c.roles, mess.Role)
+	c.conversation = append(c.conversation, mess)
+	return c
+}
+
+func (c *ConversationBuilder) GetMessageType(index int) string {
+	return c.messageTypes[index]
+}
+
+func (c *ConversationBuilder) ConvertToAssistant(index int) *AssistantMessage {
+	if c.GetMessageType(index) != "assistant" {
+		panic(fmt.Sprintf("cannot convert message of type %s to assistant", c.GetMessageType(index)))
+	}
+
+	if val, ok := c.conversation[index].(*AssistantMessage); ok {
+		return val
+	} else {
+		panic("could not convert to assistant message")
+	}
+}
+
+func (c *ConversationBuilder) ConvertToMultiModal(index int) *MultiModalMessage {
+	if c.GetMessageType(index) != "multimodal" {
+		panic(fmt.Sprintf("cannot convert message of type %s to multimodal", c.GetMessageType(index)))
+	}
+
+	if val, ok := c.conversation[index].(*MultiModalMessage); ok {
+		return val
+	} else {
+		panic("could not convert to multimodal message")
+	}
+}
+
+func (c *ConversationBuilder) ConvertToStandard(index int) *StandardMessage {
+	if c.GetMessageType(index) != "standard" {
+		panic(fmt.Sprintf("cannot convert message of type %s to standard", c.GetMessageType(index)))
+	}
+
+	if val, ok := c.conversation[index].(*StandardMessage); ok {
+		return val
+	} else {
+		panic("could not convert to standard message")
+	}
+}
+
+func (c *ConversationBuilder) Pop(index int) *ConversationBuilder {
+	delMes := helper.DeleteByIndex[message]
+	delStr := helper.DeleteByIndex[string]
+
+	llmMess := delMes(c.conversation, uint(index))
+	mType := delStr(c.messageTypes, uint(index))
+	roleSlice := delStr(c.roles, uint(index))
+
+	c.conversation = llmMess
+	c.messageTypes = mType
+	c.roles = roleSlice
+
+	return c
+}
+
+func (c *ConversationBuilder) Build() (error, Conversation) {
+	for _, mess := range c.conversation {
+		if err := mess.validate(); err != nil {
+			return err, nil
+		}
+	}
+
+	if c.roles[len(c.roles)-1] != "user" || c.messageTypes[len(c.messageTypes)-1] == "assistant" {
+		return errors.New("last message in any conversation must be from the user"), nil
+	}
+
+	return nil, c.conversation
 }
 
 /*
