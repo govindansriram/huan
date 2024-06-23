@@ -23,56 +23,91 @@ func TestContains(t *testing.T) {
 func TestDeleteByIndex(t *testing.T) {
 
 	stringSlice := []string{
-		"data", "test", "water", "benchai",
+		"data", "test", "water", "benchai", "huan", "success",
 	}
 
 	del := DeleteByIndex[string]
 
-	err, stringSlice := del(stringSlice, 0)
+	t.Run("index out of bounds", func(t *testing.T) {
+		defer func(t *testing.T) {
+			if r := recover(); r == nil {
+				t.Error("did not panic for out of bounds request")
+			}
+		}(t)
 
-	if err != nil {
-		t.Error("failed to delete by index")
+		del(stringSlice, 10)
+	})
+
+	tests := []struct {
+		index        int
+		currentSlice []string
+		resultSlice  []string
+		name         string
+	}{
+		{
+			index:        2,
+			currentSlice: stringSlice,
+			resultSlice:  []string{"data", "test", "benchai", "huan", "success"},
+			name:         "delete middle",
+		},
+		{
+			index:        0,
+			currentSlice: stringSlice,
+			resultSlice:  []string{"test", "water", "benchai", "huan", "success"},
+			name:         "delete first",
+		},
+		{
+			index:        5,
+			currentSlice: stringSlice,
+			resultSlice:  []string{"data", "test", "water", "benchai", "huan"},
+			name:         "delete last",
+		},
 	}
 
-	if len(stringSlice) != 3 {
-		t.Error("slice size did not decrease by 1")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			adjusted := del(tt.currentSlice, uint(tt.index))
+			for index := range adjusted {
+				if tt.resultSlice[index] != adjusted[index] {
+					t.Error("expected given slice: ", adjusted, "to match: ", tt.resultSlice)
+				}
+			}
+
+			if cap(adjusted) != len(tt.resultSlice) {
+				t.Errorf("expected capacity to be %d, received %d", cap(adjusted), len(tt.resultSlice))
+			}
+		})
 	}
 
-	err, _ = del(stringSlice, -1)
+	t.Run("test delete all", func(t *testing.T) {
 
-	if err == nil {
-		t.Error("failed to detect negative index")
-	}
+		defer func(t *testing.T) {
+			if r := recover(); r != nil {
+				t.Error("had to recover")
+			}
+		}(t)
 
-	err, _ = del(stringSlice, 10)
+		startLength := len(stringSlice)
 
-	if err == nil {
-		t.Error("failed to detect out of bound index")
-	}
+		newSlice := del(stringSlice, 2)
+		newSlice = del(newSlice, 1)
 
-	_, stringSlice = del(stringSlice, 2)
+		if len(newSlice) != startLength-2 {
+			t.Error("failed to remove 2 indices sequentially")
+		}
 
-	if len(stringSlice) != 2 {
-		t.Error("slice size did not decrease by 1 @ index 2")
-	}
+		length := len(newSlice)
 
-	_, stringSlice = del(stringSlice, 1)
+		for range len(newSlice) {
+			newSlice = del(newSlice, 0)
 
-	if len(stringSlice) != 1 {
-		t.Error("slice size did not decrease by 1 @ index 1")
-	}
+			length--
 
-	_, stringSlice = del(stringSlice, 0)
-
-	if len(stringSlice) != 0 {
-		t.Error("slice size did not decrease by 1 @ index 1")
-	}
-
-	err, _ = del(stringSlice, 0)
-
-	if err == nil {
-		t.Error("failed to detect empty slice")
-	}
+			if length != len(newSlice) && cap(newSlice) != length {
+				t.Errorf("string has improper length or capacity when doing sequenctail removal")
+			}
+		}
+	})
 }
 
 func TestIsLte(t *testing.T) {
@@ -120,5 +155,39 @@ func TestIsBetween(t *testing.T) {
 
 	if bte(10, 100, -10, true, true) {
 		t.Error("failed to detect value that -10 is not between 10 and 100")
+	}
+}
+
+func getSet() Set[uint8] {
+	dataSet := make(Set[uint8], 10)
+	return dataSet
+}
+
+func TestSet_Has(t *testing.T) {
+	set := Set[uint8]{
+		108: struct{}{},
+	}
+
+	if !set.Has(108) {
+		t.Fatal("has functionality failed")
+	}
+}
+
+func TestSet_Insert(t *testing.T) {
+	set := getSet()
+	set.Insert(10)
+
+	if !set.Has(10) {
+		t.Fatal("insert failed")
+	}
+}
+
+func TestSet_Delete(t *testing.T) {
+	set := getSet()
+	set.Insert(10)
+	set.Delete(10)
+
+	if set.Has(10) {
+		t.Fatal("failed to delete")
 	}
 }

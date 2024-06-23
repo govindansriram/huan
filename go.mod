@@ -1,4 +1,4 @@
-module agent
+module huan
 
 go 1.22
 
@@ -15,4 +15,5 @@ require (
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
 	golang.org/x/sys v0.19.0 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
