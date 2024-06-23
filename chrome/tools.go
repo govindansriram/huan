@@ -11,7 +11,6 @@ group data collected at certain points of time together.
 package chrome
 
 import (
-	"agent/helper"
 	"context"
 	"errors"
 	"fmt"
@@ -19,6 +18,7 @@ import (
 	"github.com/chromedp/cdproto/css"
 	"github.com/chromedp/cdproto/runtime"
 	"github.com/chromedp/chromedp"
+	"huan/helper"
 	"log"
 	"time"
 )

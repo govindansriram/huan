@@ -1,14 +1,14 @@
 package model
 
 import (
-	"agent/helper"
-	"agent/llm/messages"
 	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"huan/helper"
+	"huan/llm/messages"
 	"io"
 	"net/http"
 	"strings"

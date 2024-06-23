@@ -1,11 +1,11 @@
 package main
 
 import (
-	"agent/llm/messages"
-	"agent/scraper"
-	"agent/scraper/fetch"
 	"fmt"
 	"gopkg.in/yaml.v3"
+	"huan/llm/messages"
+	"huan/scraper"
+	"huan/scraper/fetch"
 	"os"
 )
 

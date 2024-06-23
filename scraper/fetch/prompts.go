@@ -1,11 +1,11 @@
 package fetch
 
 import (
-	"agent/llm/messages"
-	scraper2 "agent/scraper"
 	"context"
 	_ "embed"
 	"fmt"
+	"huan/llm/messages"
+	scraper2 "huan/scraper"
 	"sync"
 )
 

@@ -1,12 +1,12 @@
 package fetch
 
 import (
-	"agent/llm/messages"
-	scraper2 "agent/scraper"
 	"context"
 	"encoding/json"
 	"errors"
 	"github.com/chromedp/chromedp"
+	"huan/llm/messages"
+	scraper2 "huan/scraper"
 	"log"
 	"time"
 )

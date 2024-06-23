@@ -1,12 +1,12 @@
 package scraper
 
 import (
-	"agent/llm/messages"
-	"agent/llm/model"
 	"context"
 	"errors"
 	"fmt"
 	"gopkg.in/yaml.v3"
+	"huan/llm/messages"
+	"huan/llm/model"
 	"log"
 	"math"
 	"strings"

@@ -1,4 +1,4 @@
-module agent
+module huan
 
 go 1.22
 
