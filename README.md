@@ -1,8 +1,15 @@
 # Huan
 
+## TOC
+- [About](#about)
+- [Why](#why)
+- [Build From Source](#build-from-source)
+  - [Requirements](#requirements)
+- [Why call it Huan](#why-call-it-huan)
+
 ## About
 
-Huan (pronounced *HOO - ON*), is a llm based data lifecycle tool
+Huan (pronounced *WHO - ON*), is a llm based data lifecycle tool
 
 Huan offers three main features
 
@@ -31,6 +38,22 @@ needed (for tasks such as Machine Learning, data analysis, etc...) this can get 
 purpose code ends up being created, fitting the need of that particular data source. We aim to change that by using 
 llm's as the engine behind the data lifecycle. Users should be able to collect, clean, and augment their data using just 
 a prompt, regardless of the source.
+
+## Build From Source
+
+### Requirements
+- GO version 1.22.1
+- Google Chrome
+
+## Why call it Huan?
+![Huan, Beren & Lúthien](images/huan.jpg)
+
+-----------------
+In J.R.R. Tolkien's the Silmarillion, Huan is a 
+wolfhound from Valinor. He embarks on various heroic
+quests during the life of Beren and Lúthien. Just like 
+the Huan of the books, you can employ the huan CLI to
+help you with your data quest.
 
 
 
