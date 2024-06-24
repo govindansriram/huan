@@ -46,7 +46,7 @@ a prompt, regardless of the source.
 - Google Chrome
 
 ## Why call it Huan?
-![Huan, Beren & Lúthien](https://www.tolkiensociety.org/app/uploads/2017/01/beren-and-luthien-preview.jpg)
+![Huan, Beren & Lúthien](images/huan.jpg)
 
 -----------------
 In J.R.R. Tolkien's the Silmarillion, Huan is a 
