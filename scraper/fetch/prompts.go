@@ -4,6 +4,7 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
+	"huan/jsonparser"
 	"huan/llm/messages"
 	scraper2 "huan/scraper"
 	"sync"
@@ -52,7 +53,9 @@ func promptPool(
 	llm *scraper2.LanguageModel,
 	ctx context.Context,
 	builder *messages.ConversationBuilder,
-	strs []*string) {
+	strs []*string,
+	samples *[]map[string]interface{},
+	logger func(message string)) {
 
 	type chatResult struct {
 		err      error
@@ -116,7 +119,17 @@ func promptPool(
 	for chatRes := range channel {
 		<-workerPool // free a space in the worker pool
 		if chatRes.err == nil {
-			fmt.Println(chatRes.response)
+			jsonData := jsonparser.ToJson(chatRes.response)
+
+			if len(jsonData) > 0 {
+				logger("successfully converted response to json")
+			} else {
+				logger("failed to convert response to json")
+			}
+
+			*samples = append(*samples, jsonData...)
 		}
 	}
+
+	logger("finished collecting all page data")
 }

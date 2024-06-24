@@ -6,6 +6,7 @@ import (
 	"huan/llm/messages"
 	"huan/scraper"
 	"huan/scraper/fetch"
+	"log"
 	"os"
 )
 
@@ -19,38 +20,53 @@ func buildFromYaml(bytes []byte) (error, *scraper.Session) {
 	return err, config
 }
 
-func Start(s *scraper.Session) error {
+func Start(s *scraper.Session) {
 
 	err, model := scraper.InitLanguageModel(
 		s.LlmConfig.Type,
 		s.LlmConfig.Settings,
 		s.LlmConfig.TryLimit,
 		s.LlmConfig.MaxTokens,
-		s.LlmConfig.Duration)
+		s.LlmConfig.Duration,
+		s.Settings.Verbose)
+
+	lg := func(message string) {
+		if s.Settings.Verbose {
+			log.Println(message)
+		}
+	}
 
 	if err != nil {
-		return err
+		lg(fmt.Sprintf("could not initialize language model due to error: %v", err))
+		return
 	}
 
 	err, sett := s.BuildSettings()
 
 	if err != nil {
-		return err
+		lg(fmt.Sprintf("could not initialize settings model due to error: %v", err))
+		return
 	}
 
 	if s.Fetch != nil {
 		err, fet := s.BuildFetchSettings()
 
+		if err != nil {
+			lg(fmt.Sprintf("could not fetch settings due to error: %v", err))
+			return
+		}
+
 		builder := &messages.ConversationBuilder{}
 
-		err = fetch.Collect(model, fet, sett, builder)
+		err = fetch.Collect(model, fet, sett, builder, lg)
 
 		if err != nil {
-			return err
+			lg(fmt.Sprintf("experienced error when writing data collection: %v", err))
+			return
+		} else {
+			lg(fmt.Sprintf("session has ended gracefully"))
 		}
 	}
-
-	return err
 }
 
 func main() {
@@ -70,7 +86,5 @@ func main() {
 		return
 	}
 
-	if err := Start(config); err != nil {
-		fmt.Println(err)
-	}
+	Start(config)
 }

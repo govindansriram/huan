@@ -56,12 +56,19 @@ func exponentialBackoff(
 	model bot,
 	maxWaitTime uint16,
 	tryLimit uint8,
-	conversation messages.Conversation) (error, *messages.AssistantMessage) {
+	conversation messages.Conversation,
+	verbose bool) (error, *messages.AssistantMessage) {
 
 	type retStruct struct {
 		message    *messages.AssistantMessage
 		error      error
 		isWaitTime bool
+	}
+
+	logger := func(ms string) {
+		if verbose {
+			log.Println(ms)
+		}
 	}
 
 	req := func(mod bot, ctx context.Context, c chan<- *retStruct) {
@@ -94,7 +101,7 @@ func exponentialBackoff(
 	}
 
 	for i := range tryLimit {
-		log.Printf("executing chat request, on attempt %d", i)
+		logger(fmt.Sprintf("executing chat request, on attempt %d", i))
 		ctx, cancelFunc := context.WithTimeout(context.Background(), time.Second*time.Duration(maxWaitTime))
 		channel := make(chan *retStruct)
 		go req(model, ctx, channel)
@@ -103,29 +110,29 @@ func exponentialBackoff(
 		case val := <-channel:
 			cancelFunc()
 			if val.error != nil && !val.isWaitTime {
-				log.Printf("request has errored, cancelling request: %v \n", val.error)
+				logger(fmt.Sprintf("request has errored, cancelling request: %v \n", val.error))
 				return val.error, nil
 			} else if val.error != nil && val.isWaitTime {
-				log.Println("rate limit hit, sleeping...")
+				logger("rate limit hit, sleeping...")
 				snooze(int(i), int(tryLimit))
 			} else if val.error == nil {
-				log.Println("response received")
+				logger("response received")
 				return nil, val.message
 			}
 		case <-ctx.Done():
 			cancelFunc()
-			log.Println("max request duration hit, sleeping...")
+			logger("max request duration hit, sleeping...")
 			snooze(int(i), int(tryLimit))
 		case <-parentCtx.Done():
 			cancelFunc()
-			log.Println("global timeout hit cancelling")
+			logger("global timeout hit cancelling")
 			return parentCtx.Err(), nil
 		}
 
 		cancelFunc()
 	}
 
-	log.Println("try limit reached request has failed")
+	logger("try limit reached request has failed")
 	return errors.New("reached try limit for chat request"), nil
 }
 
@@ -137,11 +144,12 @@ a wrapper struct around a llm with easy chat requests and defaults
 type LanguageModel struct {
 	tryLimit uint8
 	duration uint16
+	verbose  bool
 	bot      bot
 }
 
 func (l *LanguageModel) Chat(ctx context.Context, convo *messages.Conversation) (error, *messages.AssistantMessage) {
-	return exponentialBackoff(ctx, l.bot, l.duration, l.tryLimit, *convo)
+	return exponentialBackoff(ctx, l.bot, l.duration, l.tryLimit, *convo, l.verbose)
 }
 
 func (l *LanguageModel) Validate(convo *messages.ConversationBuilder) error {
@@ -154,11 +162,14 @@ func InitLanguageModel(
 	settings map[string]interface{},
 	tryLimit *uint8,
 	maxTokens *uint16,
-	duration *uint16) (error, *LanguageModel) {
+	duration *uint16,
+	verbose bool) (error, *LanguageModel) {
 
 	var tokenLimit uint16
 
-	lang := &LanguageModel{}
+	lang := &LanguageModel{
+		verbose: verbose,
+	}
 
 	if duration == nil {
 		lang.duration = 100

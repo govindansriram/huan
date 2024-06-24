@@ -3,11 +3,10 @@ package scraper
 import (
 	"errors"
 	"fmt"
+	"github.com/google/uuid"
 	"os"
 	"strings"
 )
-
-// TODO: make llm interface languageModel struct and other LLM easier to work with
 
 /*
 Session
@@ -16,7 +15,8 @@ configuration of the scraping session
 */
 type Session struct {
 	Settings struct {
-		Verbose bool `yaml:"verbose"`
+		Verbose     bool    `yaml:"verbose"`
+		SessionName *string `yaml:"sessionName"`
 	} `yaml:"settings"`
 
 	LlmConfig struct {
@@ -34,13 +34,13 @@ type Session struct {
 		Url             string                 `yaml:"url"`             // the url to collect data from
 		Task            string                 `yaml:"task"`            // the data collection task that needs to be done (extra context)
 		SavePath        *string                `yaml:"savePath"`        // where the data will be saved
-		SaveRejected    bool                   `yaml:"saveRejected"`    // whether to save all the samples that could not be processed
 		ExampleTemplate map[string]interface{} `yaml:"exampleTemplate"` // an example of how the data should be collected
 	} `yaml:"fetch"`
 }
 
 type Settings struct {
-	Verbose bool
+	Verbose     bool
+	SessionName string
 }
 
 /*
@@ -49,8 +49,17 @@ BuildSettings
 creates a settings struct with predefined defaults
 */
 func (s *Session) BuildSettings() (error, *Settings) {
+	var sessionName string
+
+	if s.Settings.SessionName == nil {
+		sessionName = uuid.New().String()
+	} else {
+		sessionName = *s.Settings.SessionName
+	}
+
 	return nil, &Settings{
-		Verbose: s.Settings.Verbose,
+		Verbose:     s.Settings.Verbose,
+		SessionName: sessionName,
 	}
 }
 
@@ -60,8 +69,7 @@ type Fetch struct {
 	MaxSamples      uint16
 	Url             string
 	Task            string
-	savePath        string
-	saveRejected    bool
+	SavePath        string
 	ExampleTemplate map[string]interface{}
 }
 
@@ -123,8 +131,7 @@ func (s *Session) BuildFetchSettings() (error, *Fetch) {
 		MaxSamples:      *s.Fetch.MaxSamples,
 		Url:             s.Fetch.Url,
 		Task:            s.Fetch.Task,
-		savePath:        *s.Fetch.SavePath,
-		saveRejected:    s.Fetch.SaveRejected,
+		SavePath:        *s.Fetch.SavePath,
 		ExampleTemplate: s.Fetch.ExampleTemplate,
 	}
 }

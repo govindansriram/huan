@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/chromedp/chromedp"
 	"huan/llm/messages"
 	scraper2 "huan/scraper"
-	"log"
+	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -158,7 +160,7 @@ func scraper(
 				return err
 			}
 
-			promptPool(2, task, string(bytes), model, c, builder, strArr)
+			promptPool(2, task, string(bytes), model, c, builder, strArr, samples, logger)
 
 			//fmt.Println(processLoadCollectionPrompt(*strArr[0], task, string(bytes), model, c))
 			break
@@ -259,17 +261,12 @@ func Collect(
 	llm *scraper2.LanguageModel,
 	fetchSettings *scraper2.Fetch,
 	set *scraper2.Settings,
-	conversationBuilder *messages.ConversationBuilder) error {
+	conversationBuilder *messages.ConversationBuilder,
+	logger func(message string)) error {
 	parentContext, cancel := initContext(fetchSettings.Headless, fetchSettings.MaxRuntime)
 	defer cancel()
 
 	sampleSlice := make([]map[string]interface{}, 0, fetchSettings.MaxSamples)
-
-	lg := func(message string) {
-		if set.Verbose {
-			log.Println(message)
-		}
-	}
 
 	scraperAction := scraper(
 		fetchSettings.Url,
@@ -279,9 +276,33 @@ func Collect(
 		fetchSettings.Task,
 		fetchSettings.ExampleTemplate,
 		conversationBuilder,
-		lg)
+		logger)
 
-	lg("fetching data ...")
+	logger("fetching data ...")
 	err := chromedp.Run(parentContext, scraperAction)
+
+	if err != nil {
+		logger(fmt.Sprintf("received non critical error upon brower session exit: %v \n", err))
+	}
+
+	err = writeData(&sampleSlice, fetchSettings.SavePath, set.SessionName)
 	return err
+}
+
+func writeData(samples *[]map[string]interface{}, savePath, sessionName string) error {
+
+	fileName := fmt.Sprintf("%s-fetched.json", sessionName)
+	savedPath := filepath.Join(savePath, fileName)
+
+	dataByes, err := json.MarshalIndent(samples, "", "    ")
+
+	if err != nil {
+		return err
+	}
+
+	if err := os.WriteFile(savedPath, dataByes, 0777); err != nil {
+		return err
+	} else {
+		return nil
+	}
 }
