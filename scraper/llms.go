@@ -2,6 +2,7 @@ package scraper
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"gopkg.in/yaml.v3"
@@ -145,6 +146,7 @@ type LanguageModel struct {
 	tryLimit uint8
 	duration uint16
 	verbose  bool
+	workers  uint8
 	bot      bot
 }
 
@@ -157,13 +159,18 @@ func (l *LanguageModel) Validate(convo *messages.ConversationBuilder) error {
 	return err
 }
 
+func (l *LanguageModel) GetWorkers(convo *messages.ConversationBuilder) uint8 {
+	return l.workers
+}
+
 func InitLanguageModel(
 	modelType string,
 	settings map[string]interface{},
 	tryLimit *uint8,
 	maxTokens *uint16,
 	duration *uint16,
-	verbose bool) (error, *LanguageModel) {
+	verbose bool,
+	workers *uint8) (error, *LanguageModel) {
 
 	var tokenLimit uint16
 
@@ -189,6 +196,12 @@ func InitLanguageModel(
 		tokenLimit = *maxTokens
 	}
 
+	if workers == nil {
+		lang.workers = 1
+	} else {
+		lang.workers = *workers
+	}
+
 	var b bot
 
 	switch strings.ToLower(modelType) {
@@ -207,4 +220,57 @@ func InitLanguageModel(
 
 	lang.bot = b
 	return nil, lang
+}
+
+type TestModel struct {
+	WorkTime time.Duration
+	Template map[string]interface{}
+	Key      string
+	Quantity uint16
+}
+
+func (t TestModel) Chat(convo messages.Conversation, ctx context.Context) (error, *bool, *messages.ChatCompletion) {
+	state := false
+
+	var dataString []interface{}
+
+	for range t.Quantity {
+		dataString = append(dataString, t.Template)
+	}
+
+	dataBytes, err := json.Marshal(dataString)
+
+	res := string(dataBytes)
+
+	if err != nil {
+		return err, nil, nil
+	}
+
+	time.Sleep(t.WorkTime * time.Second)
+
+	return nil, &state, &messages.ChatCompletion{
+		Choices: []messages.Choice{
+			{
+				Index: 0,
+				Message: messages.Message{
+					Role:    "assistant",
+					Content: &res,
+				},
+			},
+		},
+	}
+}
+
+func (t TestModel) Validate(convo *messages.ConversationBuilder) error {
+	return nil
+}
+
+func GetTestLanguageModel(t TestModel) LanguageModel {
+	return LanguageModel{
+		tryLimit: 3,
+		duration: 10,
+		verbose:  false,
+		workers:  2,
+		bot:      t,
+	}
 }

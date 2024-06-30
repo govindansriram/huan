@@ -54,15 +54,14 @@ func promptPool(
 	ctx context.Context,
 	builder *messages.ConversationBuilder,
 	strs []*string,
-	samples *[]map[string]interface{},
-	logger func(message string)) {
+	logger func(message string)) []map[string]interface{} {
 
 	type chatResult struct {
 		err      error
 		response string
 	}
 
-	channel := make(chan chatResult)               // the channel that will contain teh results of each request
+	channel := make(chan chatResult)               // the channel that will contain the results of each request
 	workerPool := make(chan struct{}, threadCount) // limits how many requests can happen at the same time
 
 	wg := sync.WaitGroup{}
@@ -116,6 +115,8 @@ func promptPool(
 		close(channel)
 	}()
 
+	var samples []map[string]interface{}
+
 	for chatRes := range channel {
 		<-workerPool // free a space in the worker pool
 		if chatRes.err == nil {
@@ -127,9 +128,9 @@ func promptPool(
 				logger("failed to convert response to json")
 			}
 
-			*samples = append(*samples, jsonData...)
+			samples = append(samples, jsonData...)
 		}
 	}
 
-	logger("finished collecting all page data")
+	return samples
 }

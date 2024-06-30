@@ -28,7 +28,8 @@ func Start(s *scraper.Session) {
 		s.LlmConfig.TryLimit,
 		s.LlmConfig.MaxTokens,
 		s.LlmConfig.Duration,
-		s.Settings.Verbose)
+		s.Settings.Verbose,
+		s.LlmConfig.Workers)
 
 	lg := func(message string) {
 		if s.Settings.Verbose {

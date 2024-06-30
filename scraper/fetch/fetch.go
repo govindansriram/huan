@@ -10,20 +10,21 @@ import (
 	scraper2 "huan/scraper"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 )
 
-func initContext(headless bool, timeout uint32) (context.Context, context.CancelFunc) {
+func initContext(parentContext context.Context, headless bool) (context.Context, context.CancelFunc) {
 	var ctx context.Context
 	var cancel context.CancelFunc
 
 	if headless {
 		ctx, cancel = chromedp.NewContext(
-			context.Background(),
+			parentContext,
 		)
 	} else {
 		actx, _ := chromedp.NewExecAllocator(
-			context.Background(),
+			parentContext,
 			append(
 				chromedp.DefaultExecAllocatorOptions[:],
 				chromedp.Flag("headless", false))...)
@@ -32,8 +33,6 @@ func initContext(headless bool, timeout uint32) (context.Context, context.Cancel
 			actx,
 		)
 	}
-
-	ctx, cancel = context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
 
 	return ctx, cancel
 }
@@ -115,7 +114,9 @@ func scraper(
 	task string,
 	template map[string]interface{},
 	builder *messages.ConversationBuilder,
-	logger func(message string)) chromedp.ActionFunc {
+	logger func(message string),
+	lock *sync.Mutex,
+	urls *[]string) chromedp.ActionFunc {
 
 	return func(c context.Context) error {
 		err := chromedp.Navigate(url).Do(c)
@@ -160,9 +161,15 @@ func scraper(
 				return err
 			}
 
-			promptPool(2, task, string(bytes), model, c, builder, strArr, samples, logger)
+			samp := promptPool(2, task, string(bytes), model, c, builder, strArr, logger)
+			logger("finished collecting all page data")
 
-			//fmt.Println(processLoadCollectionPrompt(*strArr[0], task, string(bytes), model, c))
+			lock.Lock()
+			*samples = append(*samples, samp...)
+			lock.Unlock()
+
+			*urls = append(*urls, []string{}...)
+
 			break
 
 		}
@@ -263,30 +270,93 @@ func Collect(
 	set *scraper2.Settings,
 	conversationBuilder *messages.ConversationBuilder,
 	logger func(message string)) error {
-	parentContext, cancel := initContext(fetchSettings.Headless, fetchSettings.MaxRuntime)
+
+	// make it so scraper returns list of funcs
+
+	logger("started fetch session")
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(fetchSettings.MaxRuntime)*time.Second)
+	lock := sync.Mutex{}
 	defer cancel()
 
 	sampleSlice := make([]map[string]interface{}, 0, fetchSettings.MaxSamples)
 
-	scraperAction := scraper(
-		fetchSettings.Url,
-		&sampleSlice,
-		fetchSettings.MaxSamples,
-		llm,
-		fetchSettings.Task,
-		fetchSettings.ExampleTemplate,
-		conversationBuilder,
-		logger)
+	urlList := fetchSettings.Urls
+	wg := sync.WaitGroup{}
+	urlChan := make(chan string, fetchSettings.Workers)
 
-	logger("fetching data ...")
-	err := chromedp.Run(parentContext, scraperAction)
+	wg.Add(len(urlList))
 
-	if err != nil {
-		logger(fmt.Sprintf("received non critical error upon brower session exit: %v \n", err))
+	go func() {
+		// add urls to the worker queue
+		for _, url := range urlList {
+			urlChan <- url
+		}
+	}()
+
+	go func() {
+		// start goroutine to wait for all url jobs to finish
+		wg.Wait()
+		cancel()
+	}()
+
+	go func() {
+		// goroutine that constantly checks if we have enough samples
+		for {
+			if len(sampleSlice) >= int(fetchSettings.MaxSamples) {
+				cancel()
+				return
+			}
+		}
+	}()
+
+	for {
+		select {
+		case <-ctx.Done():
+			// check if the parent context finished if so end the session
+			err := writeData(&sampleSlice, fetchSettings.SavePath, set.SessionName)
+			return err
+
+		case currentUrl := <-urlChan:
+			go func() {
+
+				// start scraping the url
+				var collectedUrls []string
+
+				scraperAction := scraper(
+					currentUrl,
+					&sampleSlice,
+					fetchSettings.MaxSamples,
+					llm,
+					fetchSettings.Task,
+					fetchSettings.ExampleTemplate,
+					conversationBuilder,
+					logger,
+					&lock,
+					&collectedUrls)
+
+				logger(fmt.Sprintf("fetching data from %s ...", currentUrl))
+				browserContext, browserCancel := initContext(ctx, fetchSettings.Headless)
+				err := chromedp.Run(browserContext, scraperAction)
+				browserCancel()
+
+				// add any collected urls
+
+				wg.Add(len(collectedUrls))
+
+				for _, scraped := range collectedUrls {
+					urlChan <- scraped
+				}
+
+				// After all urls are added signal that this session completed
+				wg.Done()
+
+				if err != nil {
+					logger(fmt.Sprintf("received non critical error upon scraping session exit: %v \n", err))
+				}
+			}()
+		}
 	}
-
-	err = writeData(&sampleSlice, fetchSettings.SavePath, set.SessionName)
-	return err
 }
 
 func writeData(samples *[]map[string]interface{}, savePath, sessionName string) error {
