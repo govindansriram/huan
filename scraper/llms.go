@@ -145,6 +145,7 @@ type LanguageModel struct {
 	tryLimit uint8
 	duration uint16
 	verbose  bool
+	workers  uint8
 	bot      bot
 }
 
@@ -157,13 +158,18 @@ func (l *LanguageModel) Validate(convo *messages.ConversationBuilder) error {
 	return err
 }
 
+func (l *LanguageModel) GetWorkers(convo *messages.ConversationBuilder) uint8 {
+	return l.workers
+}
+
 func InitLanguageModel(
 	modelType string,
 	settings map[string]interface{},
 	tryLimit *uint8,
 	maxTokens *uint16,
 	duration *uint16,
-	verbose bool) (error, *LanguageModel) {
+	verbose bool,
+	workers *uint8) (error, *LanguageModel) {
 
 	var tokenLimit uint16
 
@@ -187,6 +193,12 @@ func InitLanguageModel(
 		tokenLimit = 500
 	} else {
 		tokenLimit = *maxTokens
+	}
+
+	if workers == nil {
+		lang.workers = 1
+	} else {
+		lang.workers = *workers
 	}
 
 	var b bot

@@ -25,16 +25,18 @@ type Session struct {
 		TryLimit  *uint8                 `yaml:"tryLimit"`        // how many times to retry a rate limited request
 		MaxTokens *uint16                `yaml:"maxTokens"`       // the max tokens the chatbot should return
 		Duration  *uint16                `yaml:"requestDuration"` // Max wait time for a chat completion to request
+		Workers   *uint8                 `yaml:"workers"`         // the amount of llm requests that can happen concurrently
 	} `yaml:"llmConfig"`
 
 	Fetch *struct {
 		MaxRuntime      *uint32                `yaml:"maxRuntime"`      // max time a data collection session can run in seconds
 		Headless        bool                   `yaml:"headless"`        // whether the scraping session should be visible
 		MaxSamples      *uint16                `yaml:"maxSamples"`      // the max amount of samples to collect
-		Url             string                 `yaml:"url"`             // the url to collect data from
+		Urls            []string               `yaml:"urls"`            // the url to collect data from
 		Task            string                 `yaml:"task"`            // the data collection task that needs to be done (extra context)
 		SavePath        *string                `yaml:"savePath"`        // where the data will be saved
 		ExampleTemplate map[string]interface{} `yaml:"exampleTemplate"` // an example of how the data should be collected
+		Workers         *uint8                 `yaml:"workers"`         // the amount of urls that can be scraped concurrently
 	} `yaml:"fetch"`
 }
 
@@ -67,10 +69,11 @@ type Fetch struct {
 	MaxRuntime      uint32
 	Headless        bool
 	MaxSamples      uint16
-	Url             string
+	Urls            []string
 	Task            string
 	SavePath        string
 	ExampleTemplate map[string]interface{}
+	Workers         uint8
 }
 
 func (s *Session) BuildFetchSettings() (error, *Fetch) {
@@ -93,8 +96,19 @@ func (s *Session) BuildFetchSettings() (error, *Fetch) {
 		s.Fetch.MaxSamples = &samp
 	}
 
-	if s.Fetch.Url == "" || strings.HasPrefix("http", s.Fetch.Url) {
-		return errors.New("the Fetch setting: url is invalid"), nil
+	if len(s.Fetch.Urls) != 0 {
+		for _, url := range s.Fetch.Urls {
+			if url == "" || strings.HasPrefix("http", url) {
+				return fmt.Errorf("the Fetch setting: url is invalid %s", url), nil
+			}
+		}
+	} else {
+		return errors.New("the Fetch setting: urls is empty"), nil
+	}
+
+	if s.Fetch.Workers == nil {
+		workers := uint8(1)
+		s.Fetch.Workers = &workers
 	}
 
 	if s.Fetch.Task == "" {
@@ -129,9 +143,10 @@ func (s *Session) BuildFetchSettings() (error, *Fetch) {
 		MaxRuntime:      *s.Fetch.MaxRuntime,
 		Headless:        s.Fetch.Headless,
 		MaxSamples:      *s.Fetch.MaxSamples,
-		Url:             s.Fetch.Url,
+		Urls:            s.Fetch.Urls,
 		Task:            s.Fetch.Task,
 		SavePath:        *s.Fetch.SavePath,
 		ExampleTemplate: s.Fetch.ExampleTemplate,
+		Workers:         *s.Fetch.Workers,
 	}
 }
