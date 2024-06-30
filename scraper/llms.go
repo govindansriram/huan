@@ -2,6 +2,7 @@ package scraper
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"gopkg.in/yaml.v3"
@@ -219,4 +220,57 @@ func InitLanguageModel(
 
 	lang.bot = b
 	return nil, lang
+}
+
+type TestModel struct {
+	WorkTime time.Duration
+	Template map[string]interface{}
+	Key      string
+	Quantity uint16
+}
+
+func (t TestModel) Chat(convo messages.Conversation, ctx context.Context) (error, *bool, *messages.ChatCompletion) {
+	state := false
+
+	var dataString []interface{}
+
+	for range t.Quantity {
+		dataString = append(dataString, t.Template)
+	}
+
+	dataBytes, err := json.Marshal(dataString)
+
+	res := string(dataBytes)
+
+	if err != nil {
+		return err, nil, nil
+	}
+
+	time.Sleep(t.WorkTime * time.Second)
+
+	return nil, &state, &messages.ChatCompletion{
+		Choices: []messages.Choice{
+			{
+				Index: 0,
+				Message: messages.Message{
+					Role:    "assistant",
+					Content: &res,
+				},
+			},
+		},
+	}
+}
+
+func (t TestModel) Validate(convo *messages.ConversationBuilder) error {
+	return nil
+}
+
+func GetTestLanguageModel(t TestModel) LanguageModel {
+	return LanguageModel{
+		tryLimit: 3,
+		duration: 10,
+		verbose:  false,
+		workers:  2,
+		bot:      t,
+	}
 }
